@@ -288,7 +288,7 @@ class MockWallexClient(BaseWallexClient):
             req_type = order.order_type.value if isinstance(order.order_type, OrderType) else str(order.order_type)
             req_price = float(order.price)
             req_qty = float(order.quantity)
-            req_cid = str(order.client_order_id)
+            req_cid = str(order.client_order_id or f"mock-cl-{int(self._now()*1000)}-{self._order_counter + 1}")
         elif isinstance(order, str):
             # Check if positional arguments were used: post_order("BTCTMN", OrderSide.BUY, OrderType.LIMIT, ...)
             if isinstance(symbol, (OrderSide, str)) and (isinstance(symbol, OrderSide) or str(symbol).upper() in ("BUY", "SELL")):
@@ -297,26 +297,29 @@ class MockWallexClient(BaseWallexClient):
                 req_type = side.value if isinstance(side, OrderType) else (str(side) if side is not None else (order_type.value if isinstance(order_type, OrderType) else str(order_type or "LIMIT")))
                 req_price = float(price or 0.0)
                 req_qty = float(quantity or 0.0)
-                req_cid = str(client_order_id or f"mock-cl-{int(self._now()*1000)}")
+                req_cid = str(client_order_id or f"mock-cl-{int(self._now()*1000)}-{self._order_counter + 1}")
             else:
                 req_symbol = order
                 req_side = side.value if isinstance(side, OrderSide) else str(side)
                 req_type = order_type.value if isinstance(order_type, OrderType) else str(order_type)
                 req_price = float(price or 0.0)
                 req_qty = float(quantity or 0.0)
-                req_cid = str(client_order_id or f"mock-cl-{int(self._now()*1000)}")
+                req_cid = str(client_order_id or f"mock-cl-{int(self._now()*1000)}-{self._order_counter + 1}")
         else:
             req_symbol = str(symbol)
             req_side = side.value if isinstance(side, OrderSide) else str(side)
             req_type = order_type.value if isinstance(order_type, OrderType) else str(order_type)
             req_price = float(price or 0.0)
             req_qty = float(quantity or 0.0)
-            req_cid = str(client_order_id or f"mock-cl-{int(self._now()*1000)}")
+            req_cid = str(client_order_id or f"mock-cl-{int(self._now()*1000)}-{self._order_counter + 1}")
 
         req_side = req_side.upper()
         req_type = req_type.upper()
 
         # 1. Structural Input Validation (Parity with WallexClient invariants)
+        if req_cid in self.open_orders:
+            raise WallexOrderError(f"Duplicate client_order_id: active order '{req_cid}' already exists")
+
         if not req_symbol or not isinstance(req_symbol, str):
             raise WallexOrderError(f"Invalid order symbol: {req_symbol}")
 
@@ -392,15 +395,9 @@ class MockWallexClient(BaseWallexClient):
             is_crossing = True
         elif req_type == "LIMIT":
             if req_side == "BUY":
-                if best_ask is not None:
-                    is_crossing = (req_price >= best_ask)
-                else:
-                    is_crossing = (req_price >= mid_p) if mid_p > 0 else False
+                is_crossing = (req_price >= best_ask) if best_ask is not None else False
             elif req_side == "SELL":
-                if best_bid is not None:
-                    is_crossing = (req_price <= best_bid)
-                else:
-                    is_crossing = (req_price <= mid_p) if mid_p > 0 else False
+                is_crossing = (req_price <= best_bid) if best_bid is not None else False
 
         # Branch A: Crossing / Market Orders Fill Immediately
         if is_crossing:

@@ -778,3 +778,150 @@ class TestRetryAfterParsing:
         assert WallexClient._parse_retry_after("") is None
         assert WallexClient._parse_retry_after(None) is None
 
+
+class TestRetryAfterAdversarialCap:
+    """Verifies that Retry-After parser and rate limiter sanitize adversarial and excessive delays."""
+
+    @pytest.mark.parametrize("header, expected", [
+        ("inf", 300.0),
+        ("+inf", 300.0),
+        ("Infinity", 300.0),
+        ("+INFINITY", 300.0),
+        ("-inf", 0.0),
+        ("nan", None),
+        ("NaN", None),
+        ("-5", 0.0),
+        ("-0.01", 0.0),
+        ("300", 300.0),
+        ("300.1", 300.0),
+        ("3600", 300.0),
+        ("86400", 300.0),
+        ("4102444800", 300.0),  # Epoch timestamp in 2100
+    ])
+    def test_parse_retry_after_edge_cases(self, header, expected):
+        assert WallexClient._parse_retry_after(header) == expected
+
+    def test_rate_limiter_handle_429_sanitizes_inf_and_nan(self):
+        limiter = TokenBucketRateLimiter(rate=3.0, capacity=30.0)
+        # inf is capped to 300.0
+        # For testing, verify delay calculation without awaiting 300s sleep via penalize_429
+        delay_inf = limiter.penalize_429(cooldown_seconds=float("inf"))
+        assert delay_inf == 300.0
+
+        delay_nan = limiter.penalize_429(cooldown_seconds=float("nan"))
+        assert 0.0 < delay_nan <= 10.0
+
+
+class TestMockClientDuplicateOrderId:
+    """Verifies that duplicate client_order_id raises WallexOrderError and protects escrow integrity."""
+
+    def test_duplicate_resting_order_raises_order_error(self):
+        async def _run():
+            mock = MockWallexClient(initial_tmn=5_000_000.0)
+            # First order rests
+            await mock.post_order(
+                symbol="BTCTMN",
+                side=OrderSide.BUY,
+                order_type=OrderType.LIMIT,
+                price=1000.0,
+                quantity=1.0,
+                client_order_id="DUP-TEST-01",
+            )
+            assert "DUP-TEST-01" in mock.open_orders
+            locked_tmn = mock.tmn_locked
+            avail_tmn = mock.tmn_available
+
+            # Second order with identical client_order_id must raise WallexOrderError
+            with pytest.raises(WallexOrderError, match="Duplicate client_order_id"):
+                await mock.post_order(
+                    symbol="BTCTMN",
+                    side=OrderSide.BUY,
+                    order_type=OrderType.LIMIT,
+                    price=2000.0,
+                    quantity=1.0,
+                    client_order_id="DUP-TEST-01",
+                )
+
+            # Invariant: locked and available balances MUST be completely unchanged
+            assert mock.tmn_locked == locked_tmn
+            assert mock.tmn_available == avail_tmn
+
+            # Cancellation cleanly returns all locked funds
+            assert await mock.cancel_order(client_order_id="DUP-TEST-01") is True
+            assert mock.tmn_locked == 0.0
+            assert mock.tmn_available == 5_000_000.0
+
+        asyncio.run(_run())
+
+    def test_duplicate_resting_sell_order_raises_order_error(self):
+        async def _run():
+            mock = MockWallexClient(initial_tmn=5_000_000.0)
+            mock.crypto_balances["BTC"] = 1.0
+            # First SELL order rests
+            await mock.post_order(
+                symbol="BTCTMN",
+                side=OrderSide.SELL,
+                order_type=OrderType.LIMIT,
+                price=5_000_000_000.0,
+                quantity=0.4,
+                client_order_id="DUP-SELL-01",
+            )
+            assert "DUP-SELL-01" in mock.open_orders
+            locked_crypto = mock.crypto_locked["BTC"]
+            avail_crypto = mock.crypto_balances["BTC"]
+
+            # Duplicate SELL order with same client_order_id must raise WallexOrderError
+            with pytest.raises(WallexOrderError, match="Duplicate client_order_id"):
+                await mock.post_order(
+                    symbol="BTCTMN",
+                    side=OrderSide.SELL,
+                    order_type=OrderType.LIMIT,
+                    price=5_100_000_000.0,
+                    quantity=0.2,
+                    client_order_id="DUP-SELL-01",
+                )
+
+            # Invariant: balances remain intact
+            assert mock.crypto_locked["BTC"] == locked_crypto
+            assert mock.crypto_balances["BTC"] == avail_crypto
+
+            # Cancel returns crypto
+            assert await mock.cancel_order(client_order_id="DUP-SELL-01") is True
+            assert mock.crypto_locked["BTC"] == 0.0
+            assert mock.crypto_balances["BTC"] == 1.0
+
+        asyncio.run(_run())
+
+    def test_reuse_client_order_id_after_cancellation_allowed(self):
+        async def _run():
+            mock = MockWallexClient(initial_tmn=5_000_000.0)
+            cid = "REUSE-CID-01"
+            res1 = await mock.post_order(
+                symbol="BTCTMN",
+                side=OrderSide.BUY,
+                order_type=OrderType.LIMIT,
+                price=1000.0,
+                quantity=1.0,
+                client_order_id=cid,
+            )
+            assert res1.status == OrderStatus.PENDING
+            assert cid in mock.open_orders
+
+            # Cancel the order
+            assert await mock.cancel_order(client_order_id=cid) is True
+            assert cid not in mock.open_orders
+
+            # Reusing cid is now permitted because previous order reached terminal state
+            res2 = await mock.post_order(
+                symbol="BTCTMN",
+                side=OrderSide.BUY,
+                order_type=OrderType.LIMIT,
+                price=1000.0,
+                quantity=1.0,
+                client_order_id=cid,
+            )
+            assert res2.status == OrderStatus.PENDING
+            assert cid in mock.open_orders
+
+        asyncio.run(_run())
+
