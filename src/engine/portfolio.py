@@ -41,6 +41,7 @@ class PortfolioTracker:
 
         self.total_realized_pnl_tmn: float = 0.0
         self.trade_count: int = 0
+        self.trade_history: List[Dict[str, Any]] = []
 
     def sync_from_exchange_balance(self, balance: AccountBalance) -> None:
         """Synchronizes internal balances from exchange query."""
@@ -133,8 +134,18 @@ class PortfolioTracker:
             # Close or reduce position
             if symbol in self.active_positions:
                 pos = self.active_positions[symbol]
-                pnl = (price - pos.entry_price) * min(pos.quantity, qty) - fee
+                closed_qty = min(pos.quantity, qty)
+                pnl = (price - pos.entry_price) * closed_qty - fee
                 self.total_realized_pnl_tmn += pnl
+                self.trade_history.append({
+                    "symbol": symbol,
+                    "entry_price": pos.entry_price,
+                    "exit_price": price,
+                    "quantity": closed_qty,
+                    "pnl_tmn": pnl,
+                    "fee_tmn": fee,
+                    "timestamp": result.timestamp,
+                })
 
                 if qty >= pos.quantity:
                     del self.active_positions[symbol]

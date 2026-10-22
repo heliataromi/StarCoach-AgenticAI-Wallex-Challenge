@@ -42,6 +42,7 @@ class MockWallexClient(BaseWallexClient):
         clock: Optional[Any] = None,
         rate_limiter: Optional[Any] = None,
         initial_tmn: float = 5_000_000.0,
+        fee_rate: float = 0.0025,
     ) -> None:
         self.api_key = api_key
         self.sub_account_id = sub_account_id
@@ -79,7 +80,7 @@ class MockWallexClient(BaseWallexClient):
             "simulated_latency": 0.0,
         }
 
-        self.fee_rate: float = 0.0025  # 0.25% maker / taker fee
+        self.fee_rate: float = float(fee_rate)  # 0.25% maker / taker fee
 
     def _now(self) -> float:
         """Returns current time in seconds from clock or system time."""
