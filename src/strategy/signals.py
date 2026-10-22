@@ -177,7 +177,7 @@ class MultiRegimeSignalGenerator:
 
             if ema_aligned and momentum_ok and orderbook_support:
                 stop_dist = max(1.2 * atr, current_price * 0.008)
-                target_dist = max(2.2 * atr, current_price * self.min_profit_hurdle_pct)
+                target_dist = max(stop_dist * 2.0, current_price * 0.018, 2.2 * atr)
                 target_p = current_price + target_dist
                 stop_p = max(0.0, current_price - stop_dist)
 
@@ -255,8 +255,9 @@ class MultiRegimeSignalGenerator:
             orderbook_bid_wall = obi >= 0.05  # Solid bid wall absorbing sell pressure
 
             if is_at_lower_band and rsi_oversold and orderbook_bid_wall:
-                target_p = max(mid_bb, current_price * (1.0 + self.min_profit_hurdle_pct))
                 stop_dist = max(0.8 * atr, current_price * 0.006)
+                min_target_dist = max(stop_dist * 2.0, current_price * 0.018)
+                target_p = max(mid_bb, current_price + min_target_dist)
                 stop_p = max(0.0, current_price - stop_dist)
 
                 win_prob = 0.68

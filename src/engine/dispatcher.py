@@ -33,6 +33,7 @@ class OrderExecutionDispatcher:
         position_sizer: Optional[PositionSizer] = None,
         drawdown_sentinel: Optional[DrawdownSentinel] = None,
         min_order_tmn: float = 50_000.0,  # Wallex 50,000 TMN minimum trade rule
+        default_order_type: OrderType = OrderType.MARKET,
     ) -> None:
         self.client = client
         self.portfolio = portfolio
@@ -40,6 +41,7 @@ class OrderExecutionDispatcher:
         self.position_sizer = position_sizer or portfolio.position_sizer
         self.drawdown_sentinel = drawdown_sentinel or portfolio.drawdown_sentinel
         self.min_order_tmn = min_order_tmn
+        self.default_order_type = default_order_type
         self.metrics = EngineMetrics()
 
     async def dispatch_signal(
@@ -173,7 +175,7 @@ class OrderExecutionDispatcher:
 
             req_quantity = qty
             req_side = OrderSide.BUY
-            req_type = OrderType.LIMIT
+            req_type = self.default_order_type
             req_price = signal.current_price
         else:
             # SELL / LIQUIDATE
@@ -193,7 +195,7 @@ class OrderExecutionDispatcher:
 
             req_quantity = qty_to_sell
             req_side = OrderSide.SELL
-            req_type = OrderType.MARKET if signal.regime == MarketRegime.HIGH_VOLATILITY_PANIC else OrderType.LIMIT
+            req_type = OrderType.MARKET if signal.regime == MarketRegime.HIGH_VOLATILITY_PANIC else self.default_order_type
             req_price = signal.current_price
 
         # Step 5: Exchange Order Dispatch
