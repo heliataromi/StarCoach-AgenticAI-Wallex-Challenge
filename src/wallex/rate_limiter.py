@@ -5,6 +5,7 @@ Calibrated to Wallex 30 requests / 10s rules (capacity: 30.0, refill: 3.0/s).
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 import time
 from typing import Any, Callable, List, Optional, Union
@@ -51,11 +52,13 @@ class TokenBucketRateLimiter:
         allow_emergency_overdraft: bool = True,
         clock: Optional[Union[Callable[[], float], Any]] = None,
         time_func: Optional[Callable[[], float]] = None,
+        rate: Optional[float] = None,
     ) -> None:
         self.capacity = float(capacity)
         self.window_seconds = float(window_seconds)
-        if refill_rate is not None:
-            self.refill_rate = float(refill_rate)
+        effective_refill = refill_rate if refill_rate is not None else rate
+        if effective_refill is not None:
+            self.refill_rate = float(effective_refill)
         else:
             self.refill_rate = self.capacity / self.window_seconds if self.window_seconds > 0 else 3.0
 
@@ -277,7 +280,12 @@ class TokenBucketRateLimiter:
         if retry_after is not None:
             try:
                 parsed = float(retry_after)
-                delay = parsed if parsed > 0 else min(10.0, (1.5 ** attempt) + random.uniform(0.1, 0.5))
+                if math.isnan(parsed) or parsed <= 0:
+                    delay = min(10.0, (1.5 ** attempt) + random.uniform(0.1, 0.5))
+                elif math.isinf(parsed) or parsed > 300.0:
+                    delay = 300.0
+                else:
+                    delay = parsed
             except (ValueError, TypeError):
                 delay = min(10.0, (1.5 ** attempt) + random.uniform(0.1, 0.5))
         else:
@@ -301,8 +309,17 @@ class TokenBucketRateLimiter:
         attempt: int = 1,
     ) -> float:
         """Synchronously applies 429 freeze penalty without awaiting (for fast tests)."""
-        if cooldown_seconds is not None and cooldown_seconds > 0:
-            delay = float(cooldown_seconds)
+        if cooldown_seconds is not None:
+            try:
+                parsed = float(cooldown_seconds)
+                if math.isnan(parsed) or parsed <= 0:
+                    delay = min(10.0, (1.5 ** attempt) + random.uniform(0.1, 0.5))
+                elif math.isinf(parsed) or parsed > 300.0:
+                    delay = 300.0
+                else:
+                    delay = parsed
+            except (ValueError, TypeError):
+                delay = min(10.0, (1.5 ** attempt) + random.uniform(0.1, 0.5))
         else:
             delay = min(10.0, (1.5 ** attempt) + random.uniform(0.1, 0.5))
 

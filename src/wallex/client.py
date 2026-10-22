@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import random
 import time
@@ -247,11 +248,12 @@ class WallexClient(BaseWallexClient):
         return result
 
     @staticmethod
-    def _parse_retry_after(header_value: Optional[str]) -> Optional[float]:
+    def _parse_retry_after(header_value: Optional[str], max_delay: float = 300.0) -> Optional[float]:
         """
         Parses HTTP Retry-After header supporting float seconds, integer seconds,
         Unix epoch timestamps, and RFC 7231 HTTP-date formats.
-        Returns positive float delay in seconds, or None if unparseable.
+        Sanitizes against NaN, negative values, and caps excessive/infinite delays to max_delay (default 300.0s).
+        Returns non-negative float delay in seconds, or None if unparseable/NaN.
         """
         if not header_value:
             return None
@@ -262,9 +264,22 @@ class WallexClient(BaseWallexClient):
         # 1. Float or integer seconds / epoch timestamp
         try:
             val = float(clean_val)
+            if math.isnan(val):
+                return None
+            if val <= 0.0:
+                return 0.0
+            if math.isinf(val):
+                return max_delay
+
             if val > 1e8:  # Future epoch timestamp
-                return max(0.0, val - time.time())
-            return max(0.0, val)
+                delay = val - time.time()
+                if math.isnan(delay) or delay <= 0.0:
+                    return 0.0
+                if math.isinf(delay) or delay > max_delay:
+                    return max_delay
+                return delay
+
+            return min(val, max_delay)
         except (ValueError, TypeError):
             pass
 
@@ -275,7 +290,12 @@ class WallexClient(BaseWallexClient):
             dt = email.utils.parsedate_to_datetime(clean_val)
             if dt is not None:
                 now_dt = datetime.datetime.now(datetime.timezone.utc)
-                return max(0.0, (dt - now_dt).total_seconds())
+                diff = (dt - now_dt).total_seconds()
+                if math.isnan(diff) or diff <= 0.0:
+                    return 0.0
+                if math.isinf(diff) or diff > max_delay:
+                    return max_delay
+                return diff
         except Exception:
             pass
 
@@ -320,6 +340,10 @@ class WallexClient(BaseWallexClient):
                         await self._rate_limiter.handle_429(retry_after=retry_sec, attempt=attempt + 1)
                     else:
                         delay = retry_sec or min(10.0, (1.5 ** (attempt + 1)) + random.uniform(0.1, 0.5))
+                        if math.isnan(delay) or delay <= 0:
+                            delay = min(10.0, (1.5 ** (attempt + 1)) + random.uniform(0.1, 0.5))
+                        elif math.isinf(delay) or delay > 300.0:
+                            delay = 300.0
                         await asyncio.sleep(delay)
                     continue
 
