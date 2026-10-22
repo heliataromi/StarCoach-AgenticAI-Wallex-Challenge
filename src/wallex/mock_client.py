@@ -547,13 +547,23 @@ class MockWallexClient(BaseWallexClient):
             locked_tmn = o.get("locked_tmn", 0.0)
             if locked_tmn > 0:
                 self.tmn_locked = max(0.0, self.tmn_locked - locked_tmn)
+                if self.tmn_locked < 1e-9:
+                    self.tmn_locked = 0.0
                 self.tmn_available += locked_tmn
 
             locked_coin = o.get("locked_coin", 0.0)
             base_asset = o.get("base_asset")
             if locked_coin > 0 and base_asset:
-                self.crypto_locked[base_asset] = max(0.0, self.crypto_locked.get(base_asset, 0.0) - locked_coin)
+                new_locked = self.crypto_locked.get(base_asset, 0.0) - locked_coin
+                if abs(new_locked) < 1e-12:
+                    new_locked = 0.0
+                self.crypto_locked[base_asset] = max(0.0, new_locked)
                 self.crypto_balances[base_asset] = self.crypto_balances.get(base_asset, 0.0) + locked_coin
+
+            if not self.open_orders:
+                self.tmn_locked = 0.0
+                for k in self.crypto_locked:
+                    self.crypto_locked[k] = 0.0
 
             cancel_record = {
                 "order_id": o["order_id"],
