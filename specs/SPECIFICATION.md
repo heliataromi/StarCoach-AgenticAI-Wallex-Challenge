@@ -19,8 +19,10 @@ The system follows the **Hierarchical Asynchronous Architecture** decoupled into
 
            ┌────────────────────────────────────────────────────────┐
            │   1. WALLEX CONNECTOR & DATA INGESTION (`src/wallex`)   │
-           │   - REST API & Wallex MCP Client                       │
-           │   - Live Orderbook Stream & Ticker Poller               │
+           │   - Endpoint: `https://api.wallex.ir/mcp` (JSON-RPC 2.0)│
+           │   - Tools: `wallex_basic_get_market_depth`,            │
+           │     `wallex_basic_candle_history`, `wallex_spot_depth` │
+           │   - Credit Sub-account Balance Tracker                 │
            │   - Rate Limit Token Bucket & Reconnect Sentinel       │
            └──────────────────────────┬─────────────────────────────┘
                                       │ MarketDataSnapshot

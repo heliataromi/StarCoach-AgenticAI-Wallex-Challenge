@@ -37,7 +37,9 @@ venv.bak/
 
 # Environment / Secrets / Sensitive Data
 *.local
+.env
 .env.*
+!.env.example
 secrets.json
 wallex_keys.json
 
@@ -52,6 +54,9 @@ wallex_keys.json
 htmlcov/
 .pytest_cache/
 .tox/
+
+# Teamwork Multi-Agent Scratchpads
+.agents/teamwork/
 
 # Decision logs local test runs (optional sample logs kept, high-volume ignored if needed)
 *.log

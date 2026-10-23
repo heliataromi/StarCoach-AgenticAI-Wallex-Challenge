@@ -14,6 +14,7 @@ Core source code directory for the Wallex Algorithmic Trading Engine.
 | `risk/` | JEV Decision Gate, Drawdown Sentinel, ATR trailing stop, deadline Toman liquidation |
 | `engine/` | Sub-50ms async execution dispatcher, order lifecycle management |
 | `logger/` | Structured decision auditor generating immutable trade logs |
+| `test/` | Deterministic backtester, UDF data loader, real-time shadow paper-trading runner |
 
 ## For AI Agents
 - Follow Python 3.12 modern idioms: type annotations, async/await, dataclasses/pydantic.
