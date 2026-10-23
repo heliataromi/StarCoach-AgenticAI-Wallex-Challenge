@@ -118,7 +118,7 @@ def parse_args() -> argparse.Namespace:
         "--gemini-key",
         type=str,
         default=os.environ.get("GEMINI_API_KEY", ""),
-        help="Google AI Studio Gemini API Key for 100% free development & testing",
+        help="Google AI Studio Gemini API Key for free development & testing",
     )
     parser.add_argument(
         "--gemini-model",
