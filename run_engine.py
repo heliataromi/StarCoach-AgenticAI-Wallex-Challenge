@@ -22,7 +22,7 @@ import sys
 import time
 from typing import List, Optional
 
-from src.strategy.llm_gateway import BoxAPIGateway, load_dotenv
+from src.strategy.llm_gateway import BoxAPIGateway, LLMGateway, load_dotenv
 from src.test.backtester import DeterministicBacktester, BacktestResult
 from src.test.data_loader import generate_synthetic_market_data
 from src.test.shadow_runner import ShadowRunner
@@ -110,9 +110,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--llm-provider",
         type=str,
-        choices=["offline", "boxapi", "deepseek", "gemini", "claude", "ollama"],
-        default="boxapi" if os.environ.get("BOXAPI_API_KEY") else "offline",
-        help="LLM provider architecture (default: boxapi if key set, else offline quantitative debate)",
+        choices=["offline", "boxapi", "gemini", "deepseek", "claude", "ollama"],
+        default=os.environ.get("LLM_PROVIDER", "boxapi" if os.environ.get("BOXAPI_API_KEY") else ("gemini" if os.environ.get("GEMINI_API_KEY") else "offline")),
+        help="LLM provider architecture: gemini (free dev), boxapi (production), offline (quantitative)",
+    )
+    parser.add_argument(
+        "--gemini-key",
+        type=str,
+        default=os.environ.get("GEMINI_API_KEY", ""),
+        help="Google AI Studio Gemini API Key for 100% free development & testing",
+    )
+    parser.add_argument(
+        "--gemini-model",
+        type=str,
+        default=os.environ.get("GEMINI_MODEL", "gemini-1.5-flash"),
+        help="Gemini model for free testing (default: gemini-1.5-flash)",
     )
     parser.add_argument(
         "--boxapi-key",
@@ -141,10 +153,47 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--budget-usd",
         type=float,
-        default=2.50,
+        default=float(os.environ.get("BOXAPI_BUDGET_USD", "2.50")),
         help="Maximum spend guard for BoxAPI credit in USD (default: $2.50 of $3.00)",
     )
     return parser.parse_args()
+
+
+def create_llm_gateway(args: argparse.Namespace) -> Optional[LLMGateway]:
+    """Instantiates active LLM Gateway based on CLI arguments and .env variables."""
+    prov = args.llm_provider.lower()
+    if prov == "offline":
+        return None
+
+    if prov == "gemini":
+        if not args.gemini_key:
+            print("Note: GEMINI_API_KEY not set. Defaulting to offline quantitative engine.")
+            return None
+        print(f"Connecting to Google AI Studio Gemini Free Tier (Model: {args.gemini_model})...")
+        return LLMGateway(
+            provider="gemini",
+            api_key=args.gemini_key,
+            macro_model=args.gemini_model,
+            debate_model=args.gemini_model,
+            reflection_model=args.gemini_model,
+        )
+
+    if prov == "boxapi":
+        if not args.boxapi_key:
+            print("Note: BOXAPI_API_KEY not set. Defaulting to offline quantitative engine.")
+            return None
+        print(f"Connecting to BoxAPI Gateway (Flagship: {args.boxapi_model}, Mini: {args.boxapi_mini_model})...")
+        return LLMGateway(
+            provider="boxapi",
+            api_key=args.boxapi_key,
+            base_url=args.boxapi_base_url,
+            macro_model=args.boxapi_mini_model,
+            debate_model=args.boxapi_model,
+            reflection_model=args.boxapi_mini_model,
+            budget_limit_usd=args.budget_usd,
+        )
+
+    return None
 
 
 async def run_backtest_mode(args: argparse.Namespace, symbols: List[str]) -> int:
@@ -178,17 +227,7 @@ async def run_backtest_mode(args: argparse.Namespace, symbols: List[str]) -> int
         )
 
     log_path = os.path.join(args.log_dir, "backtest")
-    gateway = None
-    if args.llm_provider == "boxapi" and args.boxapi_key:
-        print(f"Connecting to BoxAPI Gateway (Flagship: {args.boxapi_model}, Mini: {args.boxapi_mini_model})...")
-        gateway = BoxAPIGateway(
-            api_key=args.boxapi_key,
-            base_url=args.boxapi_base_url,
-            macro_model=args.boxapi_mini_model,
-            debate_model=args.boxapi_model,
-            reflection_model=args.boxapi_mini_model,
-            budget_limit_usd=args.budget_usd,
-        )
+    gateway = create_llm_gateway(args)
 
     backtester = DeterministicBacktester(
         initial_equity_tmn=args.equity,
@@ -228,8 +267,11 @@ async def run_backtest_mode(args: argparse.Namespace, symbols: List[str]) -> int
     print(f"Audit Trail Integrity : {audit_label}")
     if res.reflection_summary:
         print(f"Post-Trade Reflection : {res.reflection_summary}")
-    if gateway:
-        print(f"BoxAPI Credit Usage   : ${gateway.stats.estimated_cost_usd:.4f} / ${gateway.budget_limit_usd:.2f} (Calls: {gateway.stats.successful_calls}/{gateway.stats.total_calls}, Tokens: {gateway.stats.total_prompt_tokens + gateway.stats.total_completion_tokens})")
+    if gateway and gateway.is_configured:
+        if gateway.provider == "gemini":
+            print(f"LLM Provider Usage    : Google AI Studio Gemini Free Tier (Model: {gateway.debate_model}) | Calls: {gateway.stats.successful_calls}/{gateway.stats.total_calls} | Spend: $0.00")
+        elif gateway.provider == "boxapi":
+            print(f"BoxAPI Credit Usage   : ${gateway.stats.estimated_cost_usd:.4f} / ${gateway.budget_limit_usd:.2f} (Calls: {gateway.stats.successful_calls}/{gateway.stats.total_calls}, Tokens: {gateway.stats.total_prompt_tokens + gateway.stats.total_completion_tokens})")
     print("=" * 70)
 
     if args.show_debate and getattr(backtester, "_last_macro_agent", None):
@@ -274,17 +316,7 @@ async def run_shadow_mode(args: argparse.Namespace, symbols: List[str]) -> int:
         live_client = MockWallexClient(initial_tmn=args.equity)
 
     log_path = os.path.join(args.log_dir, "shadow")
-    gateway = None
-    if args.llm_provider == "boxapi" and args.boxapi_key:
-        print(f"Connecting to BoxAPI Gateway (Flagship: {args.boxapi_model}, Mini: {args.boxapi_mini_model})...")
-        gateway = BoxAPIGateway(
-            api_key=args.boxapi_key,
-            base_url=args.boxapi_base_url,
-            macro_model=args.boxapi_mini_model,
-            debate_model=args.boxapi_model,
-            reflection_model=args.boxapi_mini_model,
-            budget_limit_usd=args.budget_usd,
-        )
+    gateway = create_llm_gateway(args)
 
     runner = ShadowRunner(
         live_client=live_client,
@@ -308,8 +340,11 @@ async def run_shadow_mode(args: argparse.Namespace, symbols: List[str]) -> int:
         print(f"Audit Integrity       : VERIFIED (100% SHA-256 Tamper-Evident)")
         mem_sum = runner.macro_agent.memory.generate_reflection_summary()
         print(f"Memory Reflection     : {mem_sum}")
-        if gateway:
-            print(f"BoxAPI Credit Usage   : ${gateway.stats.estimated_cost_usd:.4f} / ${gateway.budget_limit_usd:.2f} (Calls: {gateway.stats.successful_calls}/{gateway.stats.total_calls}, Tokens: {gateway.stats.total_prompt_tokens + gateway.stats.total_completion_tokens})")
+        if gateway and gateway.is_configured:
+            if gateway.provider == "gemini":
+                print(f"LLM Provider Usage    : Google AI Studio Gemini Free Tier (Model: {gateway.debate_model}) | Calls: {gateway.stats.successful_calls}/{gateway.stats.total_calls} | Spend: $0.00")
+            elif gateway.provider == "boxapi":
+                print(f"BoxAPI Credit Usage   : ${gateway.stats.estimated_cost_usd:.4f} / ${gateway.budget_limit_usd:.2f} (Calls: {gateway.stats.successful_calls}/{gateway.stats.total_calls}, Tokens: {gateway.stats.total_prompt_tokens + gateway.stats.total_completion_tokens})")
         print("=" * 70)
 
         if args.show_debate:
