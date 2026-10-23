@@ -63,12 +63,16 @@ class DeterministicBacktester:
         log_dir: str = "decision_logs/backtest",
         macro_cadence_steps: int = 15,
         llm_gateway: Optional[Any] = None,
+        jev_hurdle_rate_pct: float = 0.0050,
+        min_reward_to_risk: float = 1.8,
     ) -> None:
         self.initial_equity_tmn = float(initial_equity_tmn)
         self.fee_rate = fee_rate
         self.log_dir = log_dir
         self.macro_cadence_steps = macro_cadence_steps
         self.llm_gateway = llm_gateway
+        self.jev_hurdle_rate_pct = jev_hurdle_rate_pct
+        self.min_reward_to_risk = min_reward_to_risk
 
     async def run(
         self,
@@ -91,6 +95,8 @@ class DeterministicBacktester:
             initial_capital_tmn=self.initial_equity_tmn,
             max_position_size_pct=0.20,
             round_trip_fee_pct=self.fee_rate * 2.0,
+            jev_hurdle_rate_pct=self.jev_hurdle_rate_pct,
+            min_reward_to_risk=self.min_reward_to_risk,
         )
         drawdown_sentinel = DrawdownSentinel(config=config)
         position_sizer = PositionSizer(config=config)

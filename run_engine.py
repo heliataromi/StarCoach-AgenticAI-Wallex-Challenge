@@ -176,6 +176,7 @@ def create_llm_gateway(args: argparse.Namespace) -> Optional[LLMGateway]:
             macro_model=args.gemini_model,
             debate_model=args.gemini_model,
             reflection_model=args.gemini_model,
+            timeout_seconds=15.0,
         )
 
     if prov == "boxapi":
@@ -191,6 +192,7 @@ def create_llm_gateway(args: argparse.Namespace) -> Optional[LLMGateway]:
             debate_model=args.boxapi_model,
             reflection_model=args.boxapi_mini_model,
             budget_limit_usd=args.budget_usd,
+            timeout_seconds=15.0,
         )
 
     return None

@@ -97,14 +97,24 @@ class ShadowRunner:
             try:
                 # Live depth
                 depth_snapshot = await self.live_client.get_market_depth(sym)
-                market_orderbooks[sym] = depth_snapshot.orderbook
+                ob = getattr(depth_snapshot, "orderbook", None)
+                if ob is None:
+                    ob = OrderBook(
+                        symbol=sym,
+                        bids=depth_snapshot.bids,
+                        asks=depth_snapshot.asks,
+                        timestamp=depth_snapshot.timestamp,
+                    )
+                market_orderbooks[sym] = ob
 
                 # Update prices in virtual exchange
-                mid = depth_snapshot.orderbook.mid_price or 1.0
+                mid = getattr(ob, "mid_price", None) or depth_snapshot.best_bid or 1.0
+                if mid <= 1.0 and ob.bids and ob.asks:
+                    mid = (ob.bids[0][0] + ob.asks[0][0]) / 2.0
                 self.virtual_client.mock_prices[sym] = mid
                 self.virtual_client.orderbooks[sym] = {
-                    "bids": depth_snapshot.orderbook.bids,
-                    "asks": depth_snapshot.orderbook.asks,
+                    "bids": ob.bids,
+                    "asks": ob.asks,
                     "timestamp": depth_snapshot.timestamp,
                 }
                 self.portfolio.update_market_price(sym, mid)

@@ -176,8 +176,8 @@ class MultiRegimeSignalGenerator:
             orderbook_support = obi >= -0.10
 
             if ema_aligned and momentum_ok and orderbook_support:
-                stop_dist = max(1.2 * atr, current_price * 0.008)
-                target_dist = max(stop_dist * 2.0, current_price * 0.018, 2.2 * atr)
+                stop_dist = max(1.0 * atr, current_price * 0.008)
+                target_dist = max(stop_dist * 2.2, current_price * 0.022, 2.5 * atr)
                 target_p = current_price + target_dist
                 stop_p = max(0.0, current_price - stop_dist)
 
@@ -220,8 +220,13 @@ class MultiRegimeSignalGenerator:
         # =====================================================================
         if regime == MarketRegime.RANGING_SIDEWAYS:
             if has_open_position:
-                # Target is middle band (mean) or upper band; stop is below lower band
-                if current_price >= mid_bb or rsi >= 65.0:
+                # Give position room to breathe (longer holding time)
+                # Don't prematurely cut a trend trade during temporary range consolidation
+                stop_loss = entry_price - (1.5 * atr) if entry_price > 0 else (current_price - 1.5 * atr)
+                tp_reached = (current_price >= entry_price * 1.015) or (current_price >= mid_bb and current_price >= entry_price * 1.012)
+                rsi_overbought = rsi >= 75.0
+                stop_hit = current_price <= stop_loss and entry_price > 0
+                if tp_reached or rsi_overbought or stop_hit:
                     return TradingSignal(
                         symbol=symbol,
                         action=SignalAction.SELL,
@@ -231,7 +236,7 @@ class MultiRegimeSignalGenerator:
                         stop_loss_price=current_price * 0.99,
                         estimated_win_probability=0.75,
                         confidence=0.80,
-                        rationale=f"Range mean-reversion target reached: SMA20 ({mid_bb:.1f}) reached, RSI={rsi:.1f}",
+                        rationale=f"Range exit: Target or stop reached, RSI={rsi:.1f}",
                         indicators=indicators_snapshot,
                         timestamp=now,
                     )
@@ -240,11 +245,11 @@ class MultiRegimeSignalGenerator:
                     action=SignalAction.HOLD,
                     regime=regime,
                     current_price=current_price,
-                    target_price=mid_bb,
-                    stop_loss_price=entry_price - (0.8 * atr),
+                    target_price=entry_price * 1.025 if entry_price > 0 else mid_bb,
+                    stop_loss_price=stop_loss,
                     estimated_win_probability=0.65,
                     confidence=0.70,
-                    rationale="Holding mean-reversion position towards SMA20",
+                    rationale="Holding position: allowing trend/mean-reversion to develop",
                     indicators=indicators_snapshot,
                     timestamp=now,
                 )
@@ -256,7 +261,7 @@ class MultiRegimeSignalGenerator:
 
             if is_at_lower_band and rsi_oversold and orderbook_bid_wall:
                 stop_dist = max(0.8 * atr, current_price * 0.006)
-                min_target_dist = max(stop_dist * 2.0, current_price * 0.018)
+                min_target_dist = max(stop_dist * 2.2, current_price * 0.020)
                 target_p = max(mid_bb, current_price + min_target_dist)
                 stop_p = max(0.0, current_price - stop_dist)
 

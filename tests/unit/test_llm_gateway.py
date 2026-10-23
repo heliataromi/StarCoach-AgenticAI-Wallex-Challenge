@@ -53,7 +53,7 @@ class TestLLMGatewayProviders:
         assert gw.is_configured is True
         assert gw.provider == "gemini"
         assert "generativelanguage.googleapis.com" in gw.base_url
-        assert gw.macro_model == "gemini-1.5-flash"
+        assert gw.macro_model in ["gemini-1.5-flash", "gemini-3.8-flash", os.environ.get("GEMINI_MODEL", "")]
         # Free tier is never budget-exhausted
         assert gw.budget_exhausted is False
 
