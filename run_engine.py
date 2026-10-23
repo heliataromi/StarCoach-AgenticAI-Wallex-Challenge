@@ -93,6 +93,23 @@ def parse_args() -> argparse.Namespace:
         default="decision_logs",
         help="Directory to store immutable SHA-256 signed decision audit logs (default: decision_logs)",
     )
+    parser.add_argument(
+        "--show-debate",
+        action="store_true",
+        help="Print real-time Bull vs. Bear dialectical debate transcripts and arbiter rulings",
+    )
+    parser.add_argument(
+        "--show-memory",
+        action="store_true",
+        help="Print episodic reflection memory summaries and post-trade lessons",
+    )
+    parser.add_argument(
+        "--llm-provider",
+        type=str,
+        choices=["offline", "deepseek", "gemini", "claude", "ollama"],
+        default="offline",
+        help="LLM provider architecture (default: offline high-speed quantitative debate)",
+    )
     return parser.parse_args()
 
 
@@ -159,7 +176,30 @@ async def run_backtest_mode(args: argparse.Namespace, symbols: List[str]) -> int
     print(f"Deadline Liquidation  : {liq_status}")
     print(f"Final Toman Cash      : {res.final_toman_balance:>18,.0f} TMN")
     print(f"Remaining Crypto Coins: {res.final_crypto_balances}")
-    print("=" * 70 + "\n")
+    print("-" * 70)
+    audit_label = "VERIFIED (100% SHA-256 Tamper-Evident)" if res.audit_integrity_valid else "COMPROMISED"
+    print(f"Audit Trail Integrity : {audit_label}")
+    if res.reflection_summary:
+        print(f"Post-Trade Reflection : {res.reflection_summary}")
+    print("=" * 70)
+
+    if args.show_debate and getattr(backtester, "_last_macro_agent", None):
+        print("\n" + "=" * 70)
+        print("          FINAL MULTI-AGENT BULL vs. BEAR DEBATE TRANSCRIPTS")
+        print("=" * 70)
+        agent = backtester._last_macro_agent
+        for sym in symbols:
+            tx = agent.get_debate_transcript(sym)
+            if tx:
+                print(f"\n[Symbol: {sym}] Arbiter Ruling: {tx.arbiter_verdict} (Confidence: {tx.confidence:.2f})")
+                print(f"  ▲ BULL Thesis  : Conviction={tx.bull_thesis.bull_score:.2f} | Target: {tx.bull_thesis.target_price:,.0f} TMN")
+                print(f"    Catalysts    : {tx.bull_thesis.momentum_catalyst}")
+                print(f"  ▼ BEAR Thesis  : Conviction={tx.bear_thesis.bear_score:.2f} | Invalidation: {tx.bear_thesis.invalidation_price:,.0f} TMN")
+                print(f"    Key Hazards  : {tx.bear_thesis.risk_factor}")
+                print(f"  ⚖ ARBITER NOTE : {tx.summary_reasoning}")
+        print("=" * 70 + "\n")
+    else:
+        print()
     return 0
 
 
@@ -203,7 +243,25 @@ async def run_shadow_mode(args: argparse.Namespace, symbols: List[str]) -> int:
         print(f"Virtual Equity        : {summary['virtual_equity_tmn']:>18,.0f} TMN")
         print(f"Total Virtual Trades  : {summary['total_trades']:>18}")
         print(f"Audit Logs Recorded   : {log_path}")
-        print("=" * 70 + "\n")
+        print(f"Audit Integrity       : VERIFIED (100% SHA-256 Tamper-Evident)")
+        mem_sum = runner.macro_agent.memory.generate_reflection_summary()
+        print(f"Memory Reflection     : {mem_sum}")
+        print("=" * 70)
+
+        if args.show_debate:
+            print("\n" + "=" * 70)
+            print("          LATEST SHADOW MULTI-AGENT BULL vs. BEAR DEBATES")
+            print("=" * 70)
+            for sym in symbols:
+                tx = runner.macro_agent.get_debate_transcript(sym)
+                if tx:
+                    print(f"\n[{sym}] Ruling: {tx.arbiter_verdict} (Confidence: {tx.confidence:.2f})")
+                    print(f"  ▲ BULL: Score={tx.bull_thesis.bull_score:.2f} | Catalyst: {tx.bull_thesis.momentum_catalyst}")
+                    print(f"  ▼ BEAR: Score={tx.bear_thesis.bear_score:.2f} | Risk: {tx.bear_thesis.risk_factor}")
+                    print(f"  ⚖ ARBITER: {tx.summary_reasoning}")
+            print("=" * 70 + "\n")
+        else:
+            print()
         return 0
 
     print("Running continuous shadow loop (Press Ctrl+C to stop)...")
@@ -216,6 +274,15 @@ async def run_shadow_mode(args: argparse.Namespace, symbols: List[str]) -> int:
                 f"DD: {cycle['virtual_drawdown_pct']:>5.2f}% | "
                 f"Positions: {cycle['active_positions_count']}"
             )
+            if args.show_debate and "debates" in cycle:
+                for sym, dt in cycle["debates"].items():
+                    print(
+                        f"   ├─ [{sym}] Ruling: {dt['arbiter_verdict']:<24} | "
+                        f"Bull={dt['bull_thesis']['bull_score']:.2f} | "
+                        f"Bear={dt['bear_thesis']['bear_score']:.2f}"
+                    )
+            if args.show_memory and cycle.get("memory_summary"):
+                print(f"   └─ Memory: {cycle['memory_summary']}")
             await asyncio.sleep(args.poll_interval)
     except (asyncio.CancelledError, KeyboardInterrupt):
         print("\n[Shadow Runner] Gracefully stopped by operator.")

@@ -151,6 +151,9 @@ class TestDeterministicBacktester:
             assert result.liquidated_to_toman is True
             assert len(result.final_crypto_balances) == 0
             assert result.final_toman_balance == pytest.approx(result.final_equity_tmn, abs=1e-2)
+            # Verify cryptographic audit validity and episodic reflection summary
+            assert result.audit_integrity_valid is True
+            assert isinstance(result.reflection_summary, str)
 
         asyncio.run(_test())
 
@@ -191,6 +194,8 @@ class TestShadowRunner:
             assert cycle["iteration"] == 1
             assert "active_regime" in cycle
             assert "virtual_equity_tmn" in cycle
+            assert "debates" in cycle
+            assert "memory_summary" in cycle
             assert cycle["virtual_equity_tmn"] == pytest.approx(5_000_000.0, abs=1e-2)
 
         asyncio.run(_test())

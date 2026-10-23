@@ -191,6 +191,12 @@ class ShadowRunner:
         equity = self.portfolio.calculate_total_equity()
         hwm = self.drawdown_sentinel.high_water_mark
         dd_pct = ((hwm - equity) / hwm * 100.0) if hwm > equity else 0.0
+        debates = {}
+        for sym in self.symbols:
+            tx = self.macro_agent.get_debate_transcript(sym)
+            if tx:
+                debates[sym] = tx.to_dict()
+
         return {
             "iteration": self._iteration,
             "timestamp": now,
@@ -199,4 +205,6 @@ class ShadowRunner:
             "virtual_drawdown_pct": dd_pct,
             "active_positions_count": len(self.portfolio.active_positions),
             "signals_evaluated": len(cycle_signals),
+            "debates": debates,
+            "memory_summary": self.macro_agent.memory.generate_reflection_summary(),
         }

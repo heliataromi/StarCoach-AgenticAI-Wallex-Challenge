@@ -49,6 +49,8 @@ class BacktestResult:
     liquidated_to_toman: bool
     equity_curve: List[Tuple[float, float]] = field(default_factory=list)
     audit_summary: Dict[str, Any] = field(default_factory=dict)
+    reflection_summary: str = ""
+    audit_integrity_valid: bool = True
 
 
 class DeterministicBacktester:
@@ -297,8 +299,10 @@ class DeterministicBacktester:
         final_crypto = {k: v for k, v in portfolio.crypto_balances.items() if v > 1e-8}
         is_fully_liquidated = (len(final_crypto) == 0)
 
+        is_audit_valid, _, _ = auditor.verify_all_records()
         self._last_auditor = auditor
         self._last_portfolio = portfolio
+        self._last_macro_agent = macro_agent
 
         return BacktestResult(
             initial_equity_tmn=self.initial_equity_tmn,
@@ -319,4 +323,6 @@ class DeterministicBacktester:
             liquidated_to_toman=is_fully_liquidated,
             equity_curve=equity_curve,
             audit_summary=auditor.get_summary_stats(),
+            reflection_summary=macro_agent.memory.generate_reflection_summary(),
+            audit_integrity_valid=is_audit_valid,
         )
