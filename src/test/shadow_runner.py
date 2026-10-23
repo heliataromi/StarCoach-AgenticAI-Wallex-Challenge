@@ -34,12 +34,14 @@ class ShadowRunner:
         poll_interval_seconds: float = 2.0,
         macro_interval_seconds: float = 300.0,
         log_dir: str = "decision_logs/shadow",
+        llm_gateway: Optional[Any] = None,
     ) -> None:
         self.live_client = live_client
         self.symbols = symbols or ["BTCTMN", "ETHTMN", "USDTTMN"]
         self.initial_equity_tmn = initial_equity_tmn
         self.poll_interval = poll_interval_seconds
         self.macro_interval = macro_interval_seconds
+        self.llm_gateway = llm_gateway
 
         # Paper trading virtual exchange
         self.virtual_client = MockWallexClient(initial_tmn=initial_equity_tmn)
@@ -59,7 +61,7 @@ class ShadowRunner:
             position_sizer=self.position_sizer,
             drawdown_sentinel=self.drawdown_sentinel,
         )
-        self.macro_agent = MacroAgent(allowed_symbols=self.symbols)
+        self.macro_agent = MacroAgent(allowed_symbols=self.symbols, llm_gateway=self.llm_gateway)
         self.signal_generator = MultiRegimeSignalGenerator()
         self.auditor = DecisionAuditor(log_dir=log_dir, auto_flush=True)
 

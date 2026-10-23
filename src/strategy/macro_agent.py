@@ -11,6 +11,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable, Dict, List, Optional
 from src.strategy.debate import BearResearcher, BullResearcher, DebateTranscript, RiskArbiter
+from src.strategy.llm_gateway import BoxAPIGateway
 from src.strategy.models import MacroTradingPolicy, MarketRegime
 from src.strategy.reflection import EpisodicMemoryBuffer
 from src.strategy.regimes import LatentRegimeClassifier
@@ -28,6 +29,7 @@ class MacroAgent:
         llm_reasoner: Optional[Callable[[Dict[str, Any]], str]] = None,
         memory: Optional[EpisodicMemoryBuffer] = None,
         enable_debate: bool = True,
+        llm_gateway: Optional[BoxAPIGateway] = None,
     ) -> None:
         self.allowed_symbols = allowed_symbols or ["BTCTMN", "ETHTMN", "USDTTMN"]
         self.default_policy_ttl_seconds = default_policy_ttl_seconds
@@ -35,11 +37,33 @@ class MacroAgent:
         self.llm_reasoner = llm_reasoner
         self.memory = memory or EpisodicMemoryBuffer()
         self.enable_debate = enable_debate
+        self.llm_gateway = llm_gateway
 
         # Dialectical debate components
         self.bull_researcher = BullResearcher()
         self.bear_researcher = BearResearcher()
-        self.risk_arbiter = RiskArbiter()
+
+        # Wire LLM Arbiter hook if gateway is configured
+        arbiter_hook = None
+        if self.llm_gateway:
+            def _arbiter_hook(ctx: Dict[str, Any]) -> Dict[str, Any]:
+                if not self.llm_gateway or not self.llm_gateway.is_configured:
+                    return {}
+                bull_score = ctx.get("bull_score", 0.0)
+                bear_score = ctx.get("bear_score", 0.0)
+                if max(bull_score, bear_score) < 0.30:
+                    return {}  # Choppy noise, conserve budget
+                lessons = self.memory.get_recent_lessons(ctx.get("symbol"))
+                res = self.llm_gateway.adjudicate_debate(
+                    symbol=ctx.get("symbol", ""),
+                    bull_thesis={"bull_score": bull_score, "rationale": ctx.get("bull_rationale", "")},
+                    bear_thesis={"bear_score": bear_score, "rationale": ctx.get("bear_rationale", "")},
+                    recent_lessons=lessons,
+                )
+                return res or {}
+            arbiter_hook = _arbiter_hook
+
+        self.risk_arbiter = RiskArbiter(llm_arbiter_hook=arbiter_hook)
         self.latest_debates: Dict[str, DebateTranscript] = {}
 
         self.current_policy: Optional[MacroTradingPolicy] = None
@@ -167,6 +191,23 @@ class MacroAgent:
         timestamp: Optional[float] = None,
     ) -> None:
         """Records completed trade outcome into episodic reflection memory."""
+        final_reason = exit_reason
+        if self.llm_gateway and self.llm_gateway.is_configured:
+            try:
+                llm_lesson = self.llm_gateway.reflect_on_trade({
+                    "symbol": symbol,
+                    "entry_price": entry_price,
+                    "exit_price": exit_price,
+                    "quantity": quantity,
+                    "pnl_tmn": pnl_tmn,
+                    "fee_tmn": fee_tmn,
+                    "exit_reason": exit_reason,
+                })
+                if llm_lesson:
+                    final_reason = f"{exit_reason} (LLM: {llm_lesson})"
+            except Exception:
+                pass
+
         self.memory.record_completed_trade(
             symbol=symbol,
             entry_price=entry_price,
@@ -175,7 +216,7 @@ class MacroAgent:
             pnl_tmn=pnl_tmn,
             fee_tmn=fee_tmn,
             regime=regime,
-            exit_reason=exit_reason,
+            exit_reason=final_reason,
             timestamp=timestamp,
         )
 
