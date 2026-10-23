@@ -32,6 +32,24 @@ class TradePostMortem:
     is_win: bool
     timestamp: float
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Converts post-mortem into a JSON-serializable dictionary for audit logging."""
+        return {
+            "trade_id": self.trade_id,
+            "symbol": self.symbol,
+            "entry_price": round(self.entry_price, 2),
+            "exit_price": round(self.exit_price, 2),
+            "quantity": round(self.quantity, 6),
+            "pnl_tmn": round(self.pnl_tmn, 2),
+            "pnl_pct": round(self.pnl_pct, 4),
+            "fee_tmn": round(self.fee_tmn, 2),
+            "regime": self.regime.value,
+            "exit_reason": self.exit_reason,
+            "lesson_learned": self.lesson_learned,
+            "is_win": self.is_win,
+            "timestamp": self.timestamp,
+        }
+
 
 class EpisodicMemoryBuffer:
     """Rolling memory buffer storing trade post-mortems and distilling lessons."""

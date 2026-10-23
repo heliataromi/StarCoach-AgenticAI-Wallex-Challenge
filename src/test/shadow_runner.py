@@ -160,12 +160,33 @@ class ShadowRunner:
                     policy=policy,
                     current_time=now,
                 )
+                debate_tx = self.macro_agent.get_debate_transcript(sym)
+                memory_sum = self.macro_agent.memory.generate_reflection_summary()
+                recent_lessons = self.macro_agent.memory.get_recent_lessons(sym)
                 self.auditor.record_decision(
                     signal=sig,
                     execution_result=exec_res,
                     policy=policy,
                     portfolio_equity_tmn=self.portfolio.calculate_total_equity(),
+                    debate_transcript=debate_tx,
+                    memory_summary=memory_sum,
+                    recent_lessons=recent_lessons,
                 )
+
+                # Update episodic memory reflection on completed sell trade
+                if exec_res.success and sig.action.value == "SELL" and has_pos and entry_p > 0:
+                    pnl_tmn = (exec_res.executed_price - entry_p) * exec_res.executed_quantity - exec_res.fee_paid
+                    self.macro_agent.record_trade_outcome(
+                        symbol=sym,
+                        entry_price=entry_p,
+                        exit_price=exec_res.executed_price,
+                        quantity=exec_res.executed_quantity,
+                        pnl_tmn=pnl_tmn,
+                        fee_tmn=exec_res.fee_paid,
+                        regime=policy.active_regime,
+                        exit_reason=sig.rationale,
+                        timestamp=now,
+                    )
 
         equity = self.portfolio.calculate_total_equity()
         hwm = self.drawdown_sentinel.high_water_mark
