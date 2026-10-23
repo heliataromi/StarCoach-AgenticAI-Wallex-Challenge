@@ -16,11 +16,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime
 import os
 import signal
 import sys
 import time
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.strategy.llm_gateway import BoxAPIGateway, LLMGateway, load_dotenv
 from src.test.backtester import DeterministicBacktester, BacktestResult
@@ -28,6 +29,7 @@ from src.test.data_loader import generate_synthetic_market_data
 from src.test.shadow_runner import ShadowRunner
 from src.wallex.client import WallexClient
 from src.wallex.mock_client import MockWallexClient
+from src.web.server import TradingWebDashboard
 
 # Automatically load environment variables from .env on startup
 load_dotenv()
@@ -118,7 +120,7 @@ def parse_args() -> argparse.Namespace:
         "--gemini-key",
         type=str,
         default=os.environ.get("GEMINI_API_KEY", ""),
-        help="Google AI Studio Gemini API Key for 100% free development & testing",
+        help="Google AI Studio Gemini API Key for free development & testing",
     )
     parser.add_argument(
         "--gemini-model",
@@ -155,6 +157,24 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=float(os.environ.get("BOXAPI_BUDGET_USD", "2.50")),
         help="Maximum spend guard for BoxAPI credit in USD (default: $2.50 of $3.00)",
+    )
+    parser.add_argument(
+        "--web",
+        action="store_true",
+        default=bool(os.environ.get("PORT")),
+        help="Enable lightweight mobile status web dashboard (auto-enabled on Liara/cloud)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("PORT", "8080")),
+        help="Port for cloud web dashboard & health check (default: 8080 or $PORT)",
+    )
+    parser.add_argument(
+        "--deadline",
+        type=str,
+        default=os.environ.get("CHALLENGE_DEADLINE", "2026-10-26T18:00:00+03:30"),
+        help="Hackathon deadline ISO string or epoch seconds (default: 2026-10-26T18:00:00+03:30)",
     )
     return parser.parse_args()
 
@@ -296,48 +316,107 @@ async def run_backtest_mode(args: argparse.Namespace, symbols: List[str]) -> int
     return 0
 
 
-async def run_shadow_mode(args: argparse.Namespace, symbols: List[str]) -> int:
-    """Executes live shadow paper-trading on live Wallex orderbooks."""
+def parse_deadline(val: Optional[str]) -> Optional[float]:
+    """Parses ISO timestamp string or numeric epoch into float timestamp."""
+    if not val:
+        return None
+    try:
+        return float(val)
+    except ValueError:
+        pass
+    try:
+        dt = datetime.datetime.fromisoformat(val)
+        return dt.timestamp()
+    except Exception:
+        return None
+
+
+async def run_continuous_engine(args: argparse.Namespace, symbols: List[str], is_live: bool = False) -> int:
+    """Unified runner for continuous shadow paper-trading and live execution with optional web dashboard."""
+    mode_str = "LIVE AUTONOMOUS TRADING ENGINE" if is_live else "LIVE SHADOW PAPER-TRADING"
+    exec_type = "REAL EXCHANGE EXECUTION (Wallex Spot)" if is_live else "Simulated paper-trading on live exchange orderbook"
+    log_sub = "live" if is_live else "shadow"
+    log_path = os.path.join(args.log_dir, log_sub)
+
     print("\n" + "=" * 70)
-    print("   STARCOACH WALLEX CHALLENGE: LIVE SHADOW PAPER-TRADING")
+    print(f"   STARCOACH WALLEX CHALLENGE: {mode_str}")
     print("=" * 70)
+    if is_live:
+        print(f"Account ID       : {args.sub_account_id}")
     print(f"Target Symbols   : {', '.join(symbols)}")
-    print(f"Virtual Capital  : {args.equity:,.0f} TMN")
+    print(f"Capital          : {args.equity:,.0f} TMN")
     print(f"Polling Interval : {args.poll_interval:.1f}s")
-    print(f"Execution Type   : Simulated paper-trading on live exchange orderbook")
+    print(f"Execution Type   : {exec_type}")
     print(f"JEV Hurdle       : E[V] >= +0.35% net edge required per trade")
     print(f"Drawdown Limit   : 10.0% circuit breaker halt")
+    print(f"Deadline Target  : {args.deadline}")
     print("-" * 70)
 
-    # Use WallexClient if API key available; else high-fidelity MockWallexClient
-    if args.api_key:
-        print("Connecting to live Wallex API / MCP...")
-        live_client = WallexClient(api_key=args.api_key, sub_account_id=args.sub_account_id)
+    # Initialize Client
+    if is_live:
+        print("Connecting to live Wallex API...")
+        client = WallexClient(api_key=args.api_key, sub_account_id=args.sub_account_id)
+        await client.connect()
     else:
-        print("Note: WALLEX_API_KEY not set. Running shadow test against MockWallexClient market feed.")
-        live_client = MockWallexClient(initial_tmn=args.equity)
+        if args.api_key:
+            print("Connecting to live Wallex API feed...")
+            client = WallexClient(api_key=args.api_key, sub_account_id=args.sub_account_id)
+        else:
+            print("Note: WALLEX_API_KEY not set. Running against live public endpoints / mock feed.")
+            client = MockWallexClient(initial_tmn=args.equity)
 
-    log_path = os.path.join(args.log_dir, "shadow")
     gateway = create_llm_gateway(args)
+    deadline_ts = parse_deadline(args.deadline)
 
     runner = ShadowRunner(
-        live_client=live_client,
+        live_client=client,
         symbols=symbols,
         initial_equity_tmn=args.equity,
         poll_interval_seconds=args.poll_interval,
         log_dir=log_path,
         llm_gateway=gateway,
+        is_live=is_live,
+        deadline_timestamp=deadline_ts,
     )
 
+    # Shared mutable state for Web Dashboard
+    latest_web_state: Dict[str, Any] = {
+        "mode": "LIVE" if is_live else "SHADOW",
+        "equity_tmn": args.equity,
+        "initial_capital_tmn": args.equity,
+        "drawdown_pct": 0.0,
+        "active_regime": "INITIALIZING",
+        "total_trades": 0,
+        "iteration": 0,
+        "deadline_str": args.deadline,
+        "time_to_deadline": "Active",
+        "circuit_breaker_active": False,
+        "active_positions": {},
+        "latest_debates": {},
+    }
+
+    def get_web_status() -> Dict[str, Any]:
+        return latest_web_state
+
+    dashboard: Optional[TradingWebDashboard] = None
+    if args.web:
+        try:
+            dashboard = TradingWebDashboard(get_status_callback=get_web_status, host="0.0.0.0", port=args.port)
+            await dashboard.start()
+            print(f"[Web Dashboard] Mobile monitor & Liara health probe live at: http://0.0.0.0:{args.port}")
+        except Exception as e:
+            print(f"[Warning] Failed to start web dashboard on port {args.port}: {e}")
+
+    # Fixed iteration mode (for CI/automated verification)
     if args.iterations > 0:
-        print(f"Running {args.iterations} shadow cycles...")
+        print(f"Running {args.iterations} cycles...")
         summary = await runner.run_iterations(max_iterations=args.iterations)
         print("\n" + "=" * 70)
-        print("                    SHADOW RUNNER SUMMARY")
+        print(f"                    {mode_str} SUMMARY")
         print("=" * 70)
         print(f"Cycles Executed       : {summary['iterations_executed']:>18}")
-        print(f"Virtual Equity        : {summary['virtual_equity_tmn']:>18,.0f} TMN")
-        print(f"Total Virtual Trades  : {summary['total_trades']:>18}")
+        print(f"Equity (TMN)          : {summary['virtual_equity_tmn']:>18,.0f} TMN")
+        print(f"Total Trades          : {summary['total_trades']:>18}")
         print(f"Audit Logs Recorded   : {log_path}")
         print(f"Audit Integrity       : VERIFIED (100% SHA-256 Tamper-Evident)")
         mem_sum = runner.macro_agent.memory.generate_reflection_summary()
@@ -347,32 +426,52 @@ async def run_shadow_mode(args: argparse.Namespace, symbols: List[str]) -> int:
                 print(f"LLM Provider Usage    : Google AI Studio Gemini Free Tier (Model: {gateway.debate_model}) | Calls: {gateway.stats.successful_calls}/{gateway.stats.total_calls} | Spend: $0.00")
             elif gateway.provider == "boxapi":
                 print(f"BoxAPI Credit Usage   : ${gateway.stats.estimated_cost_usd:.4f} / ${gateway.budget_limit_usd:.2f} (Calls: {gateway.stats.successful_calls}/{gateway.stats.total_calls}, Tokens: {gateway.stats.total_prompt_tokens + gateway.stats.total_completion_tokens})")
-        print("=" * 70)
-
-        if args.show_debate:
-            print("\n" + "=" * 70)
-            print("          LATEST SHADOW MULTI-AGENT BULL vs. BEAR DEBATES")
-            print("=" * 70)
-            for sym in symbols:
-                tx = runner.macro_agent.get_debate_transcript(sym)
-                if tx:
-                    print(f"\n[{sym}] Ruling: {tx.arbiter_verdict} (Confidence: {tx.confidence:.2f})")
-                    print(f"  ▲ BULL: Score={tx.bull_thesis.bull_score:.2f} | Catalyst: {tx.bull_thesis.momentum_catalyst}")
-                    print(f"  ▼ BEAR: Score={tx.bear_thesis.bear_score:.2f} | Risk: {tx.bear_thesis.risk_factor}")
-                    print(f"  ⚖ ARBITER: {tx.summary_reasoning}")
-            print("=" * 70 + "\n")
-        else:
-            print()
+        print("=" * 70 + "\n")
+        if dashboard:
+            await dashboard.stop()
         return 0
 
-    print("Running continuous shadow loop (Press Ctrl+C to stop)...")
+    # Continuous production execution loop
+    print("Running continuous autonomous loop (Press Ctrl+C to stop)...")
     try:
         while True:
             cycle = await runner.tick_once()
+            eq = cycle.get("equity_tmn", cycle.get("virtual_equity_tmn", args.equity))
+            dd = cycle.get("drawdown_pct", cycle.get("virtual_drawdown_pct", 0.0))
+            reg = cycle.get("active_regime", "UNKNOWN")
+
+            # Update web state
+            latest_web_state["equity_tmn"] = eq
+            latest_web_state["drawdown_pct"] = dd
+            latest_web_state["active_regime"] = reg
+            latest_web_state["iteration"] = cycle["iteration"]
+            latest_web_state["circuit_breaker_active"] = cycle.get("circuit_breaker_active", False)
+            latest_web_state["active_positions"] = cycle.get("active_positions", {})
+            latest_web_state["total_trades"] = runner.dispatcher.metrics.total_orders_filled
+
+            if deadline_ts:
+                rem = max(0, int(deadline_ts - time.time()))
+                hrs, rem_s = divmod(rem, 3600)
+                mins, _ = divmod(rem_s, 60)
+                latest_web_state["time_to_deadline"] = f"{hrs}h {mins}m left ({cycle.get('liquidation_phase', 'NORMAL')})"
+
+            # Format debates for web card
+            debates_web = {}
+            for sym, tx_dict in cycle.get("debates", {}).items():
+                debates_web[sym] = {
+                    "arbiter_verdict": tx_dict.get("arbiter_verdict", "N/A"),
+                    "confidence": tx_dict.get("confidence", 0.0),
+                    "bull_score": tx_dict.get("bull_thesis", {}).get("bull_score", 0.0),
+                    "bear_score": tx_dict.get("bear_thesis", {}).get("bear_score", 0.0),
+                    "catalyst": tx_dict.get("bull_thesis", {}).get("momentum_catalyst", ""),
+                    "risk": tx_dict.get("bear_thesis", {}).get("risk_factor", ""),
+                }
+            latest_web_state["latest_debates"] = debates_web
+
             print(
-                f"[Cycle {cycle['iteration']:>4}] Regime: {cycle['active_regime']:<22} | "
-                f"Equity: {cycle['virtual_equity_tmn']:>12,.0f} TMN | "
-                f"DD: {cycle['virtual_drawdown_pct']:>5.2f}% | "
+                f"[Cycle {cycle['iteration']:>4}] Regime: {reg:<22} | "
+                f"Equity: {eq:>12,.0f} TMN | "
+                f"DD: {dd:>5.2f}% | "
                 f"Positions: {cycle['active_positions_count']}"
             )
             if args.show_debate and "debates" in cycle:
@@ -384,10 +483,19 @@ async def run_shadow_mode(args: argparse.Namespace, symbols: List[str]) -> int:
                     )
             if args.show_memory and cycle.get("memory_summary"):
                 print(f"   └─ Memory: {cycle['memory_summary']}")
+
             await asyncio.sleep(args.poll_interval)
     except (asyncio.CancelledError, KeyboardInterrupt):
-        print("\n[Shadow Runner] Gracefully stopped by operator.")
-        return 0
+        print(f"\n[{mode_str}] Gracefully stopped by operator.")
+    finally:
+        if dashboard:
+            await dashboard.stop()
+    return 0
+
+
+async def run_shadow_mode(args: argparse.Namespace, symbols: List[str]) -> int:
+    """Executes live shadow paper-trading on live Wallex orderbooks."""
+    return await run_continuous_engine(args, symbols, is_live=False)
 
 
 async def run_live_mode(args: argparse.Namespace, symbols: List[str]) -> int:
@@ -397,23 +505,7 @@ async def run_live_mode(args: argparse.Namespace, symbols: List[str]) -> int:
         print("For zero-risk simulation without keys, use: python3 run_engine.py --mode backtest")
         print("For real-time paper-trading without keys, use: python3 run_engine.py --mode shadow")
         return 1
-
-    print("\n" + "=" * 70)
-    print("   STARCOACH WALLEX CHALLENGE: LIVE AUTONOMOUS TRADING ENGINE")
-    print("=" * 70)
-    print(f"Account ID       : {args.sub_account_id}")
-    print(f"Target Symbols   : {', '.join(symbols)}")
-    print(f"Initial Credit   : {args.equity:,.0f} TMN")
-    print(f"JEV Hurdle       : E[V] >= +0.35% net edge required per trade")
-    print(f"Drawdown Limit   : 10.0% circuit breaker halt")
-    print(f"Invariant        : 100% automated execution (zero manual intervention)")
-    print("-" * 70)
-    print("Initializing Wallex client and risk sentinel...")
-    # Live mode connection
-    client = WallexClient(api_key=args.api_key, sub_account_id=args.sub_account_id)
-    await client.connect()
-    print("Live client connected. Running live surveillance loop...")
-    return 0
+    return await run_continuous_engine(args, symbols, is_live=True)
 
 
 async def main_async() -> int:

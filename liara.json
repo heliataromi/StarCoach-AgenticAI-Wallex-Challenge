@@ -1,0 +1,5 @@
+{
+  "platform": "docker",
+  "app": "starcoach-wallex-trader",
+  "port": 8080
+}

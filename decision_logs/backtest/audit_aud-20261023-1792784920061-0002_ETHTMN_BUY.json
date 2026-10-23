@@ -1,0 +1,70 @@
+{
+  "record_id": "aud-20261023-1792784920061-0002",
+  "timestamp_iso": "2026-10-23T19:48:40.061503+00:00",
+  "timestamp_epoch": 1792784920.0615027,
+  "symbol": "ETHTMN",
+  "market_regime": "BULLISH_TREND",
+  "action_proposed": "BUY",
+  "execution_outcome": "SUCCESS",
+  "price": 180133947.4042174,
+  "quantity": 0.005548648738358793,
+  "cost_tmn": 999500.0,
+  "fee_tmn": 2498.75,
+  "latency_ms": 0.09115799912251532,
+  "jev_metrics": {},
+  "risk_metrics": {
+    "portfolio_equity_tmn": 4995001.25,
+    "allocation_pct": 0.2001000500250125
+  },
+  "market_indicators": {
+    "ema9": 179923963.6406652,
+    "ema21": 179906948.98627144,
+    "rsi": 55.57179039295816,
+    "atr": 612718.1265268858,
+    "lower_bb": 179016082.62729242,
+    "mid_bb": 179748153.70787245,
+    "upper_bb": 180480224.78845248,
+    "obi": 0.0,
+    "best_bid": 179998846.94366422,
+    "best_ask": 180269047.86477056
+  },
+  "agentic_reasoning": {
+    "macro_policy_summary": "Bullish trend regime: Upward momentum active on BTCTMN, ETHTMN, USDTTMN. Authorizing trend continuation and breakout trades.",
+    "macro_active_regime": "BULLISH_TREND",
+    "tactical_rationale": "Bullish trend breakout: EMA9 (179923963.6) > EMA21 (179906949.0), RSI=55.6, OBI=0.00",
+    "signal_confidence": 0.8,
+    "execution_message": "Order executed successfully in 0.09ms",
+    "debate_transcript": {
+      "symbol": "ETHTMN",
+      "timestamp": 1700027000.0,
+      "bull_thesis": {
+        "bull_score": 0.5,
+        "momentum_catalyst": "RSI in bullish sweet-spot (53.2)",
+        "support_level": 178920901.95,
+        "target_price": 184706611.75,
+        "key_factors": [
+          "RSI in bullish sweet-spot (53.2)",
+          "Price (180201572.4) trading above 20-SMA baseline (179799090.2)"
+        ],
+        "rationale": "Bull thesis for ETHTMN: Conviction=0.50. Key catalysts: RSI in bullish sweet-spot (53.2); Price (180201572.4) trading above 20-SMA baseline (179799090.2). Projected target: 184,706,611.8 TMN with dynamic support at 178,920,901.9 TMN."
+      },
+      "bear_thesis": {
+        "bear_score": 0.35,
+        "risk_factor": "EMA9 (179663606.6) below EMA21 (179815494.4) downward pressure",
+        "resistance_level": 181282781.88,
+        "invalidation_price": 178850060.65,
+        "key_risks": [
+          "EMA9 (179663606.6) below EMA21 (179815494.4) downward pressure"
+        ],
+        "rationale": "Bear thesis for ETHTMN: Conviction=0.35. Key risk factors: EMA9 (179663606.6) below EMA21 (179815494.4) downward pressure. Overhead resistance at 181,282,781.9 TMN; downside invalidation at 178,850,060.7 TMN."
+      },
+      "arbiter_verdict": "APPROVE_BULLISH_TREND",
+      "recommended_regime": "BULLISH_TREND",
+      "confidence": 0.5,
+      "max_allocation_pct": 0.2,
+      "summary_reasoning": "Bull thesis prevails by delta +0.15 (Bull: 0.50 vs Bear: 0.35). Authorizing trend continuation up to 20% equity cap."
+    },
+    "episodic_memory_summary": "No closed trades in episodic memory. Strategy starting from baseline posture."
+  },
+  "hash_sha256": "8a5aa1cb11cb10ec4ab19dba901831ad6f599cdde0e433d4011f80427be4cabe"
+}

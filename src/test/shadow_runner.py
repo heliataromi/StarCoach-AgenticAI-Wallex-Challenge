@@ -14,9 +14,10 @@ from src.engine.portfolio import PortfolioTracker
 from src.logger.decision_logger import DecisionAuditor
 from src.risk.drawdown import DrawdownSentinel
 from src.risk.jev import JEVEvaluator
-from src.risk.models import RiskConfig
+from src.risk.models import LiquidationPhase, RiskConfig
 from src.risk.sizing import PositionSizer
 from src.strategy.macro_agent import MacroAgent
+from src.strategy.models import SignalAction, TradingSignal
 from src.strategy.signals import MultiRegimeSignalGenerator
 from src.wallex.client import BaseWallexClient
 from src.wallex.mock_client import MockWallexClient
@@ -35,6 +36,8 @@ class ShadowRunner:
         macro_interval_seconds: float = 300.0,
         log_dir: str = "decision_logs/shadow",
         llm_gateway: Optional[Any] = None,
+        is_live: bool = False,
+        deadline_timestamp: Optional[float] = None,
     ) -> None:
         self.live_client = live_client
         self.symbols = symbols or ["BTCTMN", "ETHTMN", "USDTTMN"]
@@ -42,11 +45,18 @@ class ShadowRunner:
         self.poll_interval = poll_interval_seconds
         self.macro_interval = macro_interval_seconds
         self.llm_gateway = llm_gateway
+        self.is_live = is_live
+        self.deadline_timestamp = deadline_timestamp
 
-        # Paper trading virtual exchange
+        # If live, dispatch orders to live_client; if shadow, dispatch to virtual_client
         self.virtual_client = MockWallexClient(initial_tmn=initial_equity_tmn)
+        self.execution_client = self.live_client if self.is_live else self.virtual_client
+
         self.config = RiskConfig(initial_capital_tmn=initial_equity_tmn)
-        self.drawdown_sentinel = DrawdownSentinel(config=self.config)
+        self.drawdown_sentinel = DrawdownSentinel(
+            config=self.config,
+            deadline_timestamp=self.deadline_timestamp,
+        )
         self.position_sizer = PositionSizer(config=self.config)
         self.portfolio = PortfolioTracker(
             initial_equity_tmn=initial_equity_tmn,
@@ -55,7 +65,7 @@ class ShadowRunner:
         )
         self.jev_evaluator = JEVEvaluator(config=self.config)
         self.dispatcher = OrderExecutionDispatcher(
-            client=self.virtual_client,
+            client=self.execution_client,
             portfolio=self.portfolio,
             jev_evaluator=self.jev_evaluator,
             position_sizer=self.position_sizer,
@@ -111,12 +121,13 @@ class ShadowRunner:
                 mid = getattr(ob, "mid_price", None) or depth_snapshot.best_bid or 1.0
                 if mid <= 1.0 and ob.bids and ob.asks:
                     mid = (ob.bids[0][0] + ob.asks[0][0]) / 2.0
-                self.virtual_client.mock_prices[sym] = mid
-                self.virtual_client.orderbooks[sym] = {
-                    "bids": ob.bids,
-                    "asks": ob.asks,
-                    "timestamp": depth_snapshot.timestamp,
-                }
+                if not self.is_live:
+                    self.virtual_client.mock_prices[sym] = mid
+                    self.virtual_client.orderbooks[sym] = {
+                        "bids": ob.bids,
+                        "asks": ob.asks,
+                        "timestamp": depth_snapshot.timestamp,
+                    }
                 self.portfolio.update_market_price(sym, mid)
 
                 # Live candles
@@ -146,7 +157,38 @@ class ShadowRunner:
             current_time=now,
         )
 
-        # 3. Evaluate and Dispatch Signals for each symbol
+        # 3. Check Pre-Deadline Liquidation Phase
+        liq_phase = self.drawdown_sentinel.get_liquidation_phase()
+        if liq_phase in (LiquidationPhase.ORDERLY_LIQUIDATION, LiquidationPhase.SWEEP_DUST):
+            for sym in self.symbols:
+                base = sym.replace("TMN", "").replace("USDT", "")
+                qty = self.portfolio.crypto_balances.get(base, 0.0)
+                if qty > 1e-6:
+                    mid_p = self.portfolio.market_prices.get(sym, 1.0)
+                    sig_liq = TradingSignal(
+                        symbol=sym,
+                        action=SignalAction.SELL,
+                        target_price=mid_p,
+                        suggested_quantity=qty,
+                        stop_loss=mid_p * 0.95,
+                        take_profit=mid_p * 1.05,
+                        confidence=1.0,
+                        regime=policy.active_regime,
+                        rationale=f"Mandatory pre-deadline liquidation ({liq_phase.value})",
+                    )
+                    exec_res = await self.dispatcher.dispatch_signal(
+                        signal=sig_liq,
+                        policy=policy,
+                        current_time=now,
+                    )
+                    self.auditor.record_decision(
+                        signal=sig_liq,
+                        execution_result=exec_res,
+                        policy=policy,
+                        portfolio_equity_tmn=self.portfolio.calculate_total_equity(),
+                    )
+
+        # 4. Evaluate and Dispatch Signals for each symbol
         cycle_signals = []
         for sym in self.symbols:
             c_list = market_candles.get(sym, [])
@@ -212,10 +254,17 @@ class ShadowRunner:
         return {
             "iteration": self._iteration,
             "timestamp": now,
+            "is_live": self.is_live,
             "active_regime": policy.active_regime.value,
+            "equity_tmn": equity,
             "virtual_equity_tmn": equity,
+            "drawdown_pct": dd_pct,
             "virtual_drawdown_pct": dd_pct,
+            "circuit_breaker_active": self.drawdown_sentinel.circuit_breaker_active,
+            "liquidation_phase": liq_phase.value,
             "active_positions_count": len(self.portfolio.active_positions),
+            "active_positions": {k: v.quantity for k, v in self.portfolio.active_positions.items()},
+            "crypto_balances": dict(self.portfolio.crypto_balances),
             "signals_evaluated": len(cycle_signals),
             "debates": debates,
             "memory_summary": self.macro_agent.memory.generate_reflection_summary(),

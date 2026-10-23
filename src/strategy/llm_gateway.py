@@ -40,17 +40,12 @@ except ImportError:
 logger = logging.getLogger("llm_gateway")
 
 
-def load_dotenv(dotenv_path: Optional[Union[str, Path]] = None) -> Dict[str, str]:
-    """Loads environment variables from .env using python-dotenv or fallback parser."""
+def load_dotenv(dotenv_path: Optional[Union[str, Path]] = None, override: bool = True) -> Dict[str, str]:
+    """Loads environment variables from .env using fallback or dotenv parser."""
     env_file = Path(dotenv_path) if dotenv_path else Path(".env")
     if not env_file.is_file():
         return {}
 
-    if HAS_DOTENV:
-        _py_load_dotenv(dotenv_path=env_file)
-        return dict(os.environ)
-
-    # Standard library fallback parser
     loaded: Dict[str, str] = {}
     try:
         with open(env_file, "r", encoding="utf-8") as f:
@@ -65,7 +60,7 @@ def load_dotenv(dotenv_path: Optional[Union[str, Path]] = None) -> Dict[str, str
                     if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
                         val = val[1:-1]
                     loaded[key] = val
-                    if key not in os.environ:
+                    if override or key not in os.environ:
                         os.environ[key] = val
     except Exception as e:
         logger.warning(f"Failed to read .env file at {env_file}: {e}")

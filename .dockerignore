@@ -1,0 +1,17 @@
+.git
+.github
+.agents
+.venv
+venv
+ENV
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.coverage
+htmlcov
+*.log
+docs/DEMO_VIDEO_SCRIPT.md
+secrets.json
+wallex_keys.json
+tests
