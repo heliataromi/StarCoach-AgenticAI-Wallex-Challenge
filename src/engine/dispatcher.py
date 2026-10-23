@@ -19,7 +19,7 @@ from src.risk.models import LiquidationPhase
 from src.risk.sizing import PositionSizer
 from src.strategy.models import MacroTradingPolicy, MarketRegime, SignalAction, TradingSignal
 from src.wallex.client import BaseWallexClient
-from src.wallex.models import OrderRequest, OrderSide, OrderStatus, OrderType
+from src.wallex.models import OrderRequest, OrderSide, OrderStatus, OrderType, is_credit_market_supported
 
 
 class OrderExecutionDispatcher:
@@ -97,6 +97,16 @@ class OrderExecutionDispatcher:
                         "Macro policy active regime is HIGH_VOLATILITY_PANIC; BUYS prohibited",
                     )
 
+        # Step 1.5: Wallex Credit Market Inactive Whitelist Gate
+        if signal.action == SignalAction.BUY and not is_credit_market_supported(signal.symbol):
+            return self._reject(
+                ExecutionStatus.REJECTED_RISK,
+                signal,
+                t0,
+                now,
+                f"Symbol {signal.symbol} is inactive for Wallex credit facility trading",
+            )
+
         # Step 2: Drawdown Sentinel & Deadline Gate
         if signal.action == SignalAction.BUY:
             can_trade, block_reason = self.drawdown_sentinel.can_open_position()
@@ -136,6 +146,7 @@ class OrderExecutionDispatcher:
                 stop_loss_price=signal.stop_loss_price,
                 win_probability=signal.estimated_win_probability,
                 side="BUY",
+                symbol=signal.symbol,
             )
             if not jev_res.is_approved:
                 return self._reject(

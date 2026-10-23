@@ -26,11 +26,33 @@ class RiskConfig:
     max_concurrent_positions: int = 2            # Max 2 concurrent open positions
     min_reward_to_risk: float = 1.5              # Minimum acceptable reward-to-risk ratio
     jev_hurdle_rate_pct: float = 0.0035          # Minimum positive edge (+0.35% net of fees)
-    round_trip_fee_pct: float = 0.0050           # Wallex maker/taker fees (0.25% x 2 = 0.50%)
+    round_trip_fee_pct: float = 0.0055           # Wallex credit Toman fees (0.25% maker + 0.30% taker = 0.55%)
+    toman_maker_fee_pct: float = 0.0025          # 0.25% Wallex maker fee in TMN markets
+    toman_taker_fee_pct: float = 0.0030          # 0.30% Wallex taker fee in TMN markets
+    usdt_maker_fee_pct: float = 0.0010           # 0.10% Wallex maker fee in USDT markets
+    usdt_taker_fee_pct: float = 0.0013           # 0.13% Wallex taker fee in USDT markets
     max_drawdown_limit_pct: float = 0.10         # 10% max allowable peak-to-trough drawdown
     circuit_breaker_equity_tmn: float = 4_500_000.0 # Circuit breaker halts trading if equity <= 4.5M
     atr_stop_multiplier: float = 1.2             # 1.2 x ATR for dynamic stop-loss
     max_stop_loss_pct: float = 0.02              # Hard cap stop-loss at max 2.0% distance
+
+    def get_fee_rates(self, symbol: Optional[str] = None) -> Tuple[float, float]:
+        """Returns (maker_fee, taker_fee) based on market quote currency."""
+        if symbol and symbol.upper().replace("/", "").replace("-", "").replace("_", "").endswith("USDT"):
+            return (self.usdt_maker_fee_pct, self.usdt_taker_fee_pct)
+        return (self.toman_maker_fee_pct, self.toman_taker_fee_pct)
+
+    def calculate_round_trip_fee(
+        self,
+        symbol: Optional[str] = None,
+        is_maker_entry: bool = True,
+        is_maker_exit: bool = False,
+    ) -> float:
+        """Calculates exact realistic round-trip fee friction for a market pair."""
+        maker_fee, taker_fee = self.get_fee_rates(symbol)
+        entry_fee = maker_fee if is_maker_entry else taker_fee
+        exit_fee = maker_fee if is_maker_exit else taker_fee
+        return entry_fee + exit_fee
 
 
 @dataclass(frozen=True)
