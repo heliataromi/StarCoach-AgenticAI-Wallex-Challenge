@@ -193,3 +193,60 @@ class TestDecisionAuditor:
         assert stats["total_volume_tmn"] == 650_000.0
         assert stats["total_fees_paid_tmn"] == 975.0
         assert stats["approval_rate_pct"] == 100.0
+
+    def test_debate_transcript_and_reflection_audit_logging(self, auditor, sample_signal, sample_execution):
+        from src.strategy.debate import BullThesis, BearThesis, DebateTranscript
+
+        bull = BullThesis(
+            symbol="USDTTMN",
+            bull_score=0.75,
+            momentum_catalyst="EMA golden cross with 0.25 orderbook depth imbalance",
+            support_level=64_500.0,
+            target_price=67_500.0,
+            key_factors=["EMA9 > EMA21", "Orderbook bid wall support"],
+            rationale="Strong buyer absorption at support",
+        )
+        bear = BearThesis(
+            symbol="USDTTMN",
+            bear_score=0.30,
+            risk_factor="Overhead resistance at 67,000",
+            resistance_level=67_000.0,
+            invalidation_price=64_000.0,
+            key_risks=["Upper Bollinger Band test"],
+            rationale="Manageable risk with protective stop",
+        )
+        transcript = DebateTranscript(
+            symbol="USDTTMN",
+            timestamp=1792700000.0,
+            bull_thesis=bull,
+            bear_thesis=bear,
+            arbiter_verdict="APPROVED_BULLISH_TREND",
+            recommended_regime=MarketRegime.BULLISH_TREND,
+            confidence=0.82,
+            max_allocation_pct=0.20,
+            summary_reasoning="Bull thesis demonstrates superior risk-adjusted expectancy.",
+        )
+
+        rec = auditor.record_decision(
+            signal=sample_signal,
+            execution_result=sample_execution,
+            debate_transcript=transcript,
+            memory_summary="Episodic memory: 5 completed trades | Win Rate: 80.0%",
+            recent_lessons=["Breakout validated on USDTTMN (+2.4%)"],
+        )
+
+        assert rec.verify_integrity() is True
+        assert "debate_transcript" in rec.agentic_reasoning
+        dt = rec.agentic_reasoning["debate_transcript"]
+        assert dt["symbol"] == "USDTTMN"
+        assert dt["bull_thesis"]["bull_score"] == 0.75
+        assert dt["bear_thesis"]["bear_score"] == 0.30
+        assert dt["arbiter_verdict"] == "APPROVED_BULLISH_TREND"
+        assert rec.agentic_reasoning["episodic_memory_summary"] == "Episodic memory: 5 completed trades | Win Rate: 80.0%"
+        assert len(rec.agentic_reasoning["recent_lessons"]) == 1
+
+        # Check saved JSON on disk
+        json_file = next(auditor.log_dir.glob("audit_*.json"))
+        with open(json_file, "r", encoding="utf-8") as f:
+            disk_data = json.load(f)
+        assert disk_data["agentic_reasoning"]["debate_transcript"]["arbiter_verdict"] == "APPROVED_BULLISH_TREND"
