@@ -37,7 +37,9 @@ venv.bak/
 
 # Environment / Secrets / Sensitive Data
 *.local
+.env
 .env.*
+!.env.example
 secrets.json
 wallex_keys.json
 

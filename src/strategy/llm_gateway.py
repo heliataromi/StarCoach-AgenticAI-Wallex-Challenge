@@ -1,14 +1,16 @@
-"""BoxAPI LLM Gateway for StarCoach Wallex Algorithmic Trading Challenge.
+"""Unified LLM Gateway for StarCoach Wallex Algorithmic Trading Challenge.
 
-Provides high-speed, cost-managed LLM reasoning using BoxAPI (https://ai.boxapi.ir/ai/v1):
-- OpenAI-compatible REST endpoint (/chat/completions) via Python standard library (urllib.request).
-- Multi-tier model routing:
-    * Routine Macro Regime Evaluation: gpt-5.4-mini (ultra-low cost, fast)
-    * High-Conviction Dialectical Debate Arbitration: gpt-6-astra (flagship model)
-    * Post-Trade Episodic Memory Reflection: gpt-5.4-mini (distills trade lessons)
-- Budget Guardian: Strictly enforces spend limits to preserve the $3.00 hackathon credit.
-- Graceful Fallback: Seamlessly falls back to deterministic quantitative evaluation
-  on network timeouts, API errors, or exhausted budget so live trading never halts.
+Supports:
+1. Google AI Studio Gemini (100% Free Development & Testing Tier):
+   - Base URL: https://generativelanguage.googleapis.com/v1beta/openai
+   - Models: gemini-1.5-flash, gemini-2.0-flash
+   - Preserves 100% of competition credit during development.
+2. BoxAPI (Official StarCoach Hackathon Production Tier):
+   - Base URL: https://ai.boxapi.ir/ai/v1
+   - Models: gpt-6-astra (flagship debate arbiter), gpt-5.4-mini (macro surveillance & reflection)
+   - $3.00 credit management with active Budget Guardian.
+3. Offline Deterministic Mode:
+   - Zero network dependency, instant sub-millisecond execution for testing and CI.
 """
 from __future__ import annotations
 
@@ -20,23 +22,36 @@ import os
 from pathlib import Path
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
-import urllib.error
-import urllib.request
 
-logger = logging.getLogger("boxapi_gateway")
+try:
+    from dotenv import load_dotenv as _py_load_dotenv
+    HAS_DOTENV = True
+except ImportError:
+    HAS_DOTENV = False
+
+try:
+    import requests
+    HAS_REQUESTS = True
+except ImportError:
+    HAS_REQUESTS = False
+    import urllib.error
+    import urllib.request
+
+logger = logging.getLogger("llm_gateway")
 
 
 def load_dotenv(dotenv_path: Optional[Union[str, Path]] = None) -> Dict[str, str]:
-    """Lightweight pure-Python .env file parser conforming to Ponytail minimalism.
-    
-    Reads key=value pairs, ignores comments and whitespace, and sets values into
-    os.environ if they are not already defined.
-    """
+    """Loads environment variables from .env using python-dotenv or fallback parser."""
     env_file = Path(dotenv_path) if dotenv_path else Path(".env")
-    loaded: Dict[str, str] = {}
     if not env_file.is_file():
-        return loaded
+        return {}
 
+    if HAS_DOTENV:
+        _py_load_dotenv(dotenv_path=env_file)
+        return dict(os.environ)
+
+    # Standard library fallback parser
+    loaded: Dict[str, str] = {}
     try:
         with open(env_file, "r", encoding="utf-8") as f:
             for raw_line in f:
@@ -47,7 +62,6 @@ def load_dotenv(dotenv_path: Optional[Union[str, Path]] = None) -> Dict[str, str
                     key, val = line.split("=", 1)
                     key = key.strip()
                     val = val.strip()
-                    # Strip wrapping single or double quotes
                     if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
                         val = val[1:-1]
                     loaded[key] = val
@@ -60,7 +74,7 @@ def load_dotenv(dotenv_path: Optional[Union[str, Path]] = None) -> Dict[str, str
 
 @dataclass
 class GatewayStats:
-    """Tracks token usage and estimated spend against the hackathon credit budget."""
+    """Tracks token usage and estimated spend against budget constraints."""
     total_calls: int = 0
     successful_calls: int = 0
     failed_calls: int = 0
@@ -69,11 +83,14 @@ class GatewayStats:
     estimated_cost_usd: float = 0.0
 
 
-class BoxAPIGateway:
-    """Unified OpenAI-compatible Gateway for BoxAPI LLM endpoints."""
+class LLMGateway:
+    """Unified OpenAI-compatible Gateway supporting BoxAPI and Google AI Studio Gemini."""
 
-    # Approximate pricing per 1M tokens (USD) for budget tracking
     MODEL_PRICING = {
+        # Google AI Studio Free Tier
+        "gemini-1.5-flash": {"prompt": 0.00, "completion": 0.00},
+        "gemini-2.0-flash": {"prompt": 0.00, "completion": 0.00},
+        # BoxAPI Hackathon Tier (per 1M tokens)
         "gpt-5.4-mini": {"prompt": 0.15, "completion": 0.60},
         "gpt-5-mini": {"prompt": 0.15, "completion": 0.60},
         "gpt-6-astra": {"prompt": 2.50, "completion": 10.00},
@@ -83,40 +100,65 @@ class BoxAPIGateway:
 
     def __init__(
         self,
+        provider: str = "auto",  # "gemini" | "boxapi" | "offline" | "auto"
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        macro_model: str = "gpt-5.4-mini",
-        debate_model: str = "gpt-6-astra",
-        reflection_model: str = "gpt-5.4-mini",
-        budget_limit_usd: float = 2.50,  # Safety cap below $3.00
+        macro_model: Optional[str] = None,
+        debate_model: Optional[str] = None,
+        reflection_model: Optional[str] = None,
+        budget_limit_usd: float = 2.50,
         timeout_seconds: float = 6.0,
         enable_network: bool = True,
     ) -> None:
-        # Load .env if not already loaded
         load_dotenv()
 
-        if api_key is not None:
-            self.api_key = api_key
-        else:
-            self.api_key = os.environ.get("BOXAPI_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
-        self.base_url = (base_url or os.environ.get("BOXAPI_BASE_URL") or "https://ai.boxapi.ir/ai/v1").rstrip("/")
-        self.macro_model = macro_model
-        self.debate_model = debate_model
-        self.reflection_model = reflection_model
-        self.budget_limit_usd = budget_limit_usd
+        # Resolve provider
+        if provider == "auto":
+            if os.environ.get("BOXAPI_API_KEY"):
+                provider = "boxapi"
+            elif os.environ.get("GEMINI_API_KEY"):
+                provider = "gemini"
+            else:
+                provider = "offline"
+
+        self.provider = provider.lower()
+        self.enable_network = enable_network and (self.provider != "offline")
         self.timeout_seconds = timeout_seconds
-        self.enable_network = enable_network
+        self.budget_limit_usd = budget_limit_usd
+
+        # Provider-specific configurations
+        if self.provider == "gemini":
+            self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY", "")
+            self.base_url = (base_url or os.environ.get("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
+            self.macro_model = macro_model or os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+            self.debate_model = debate_model or os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+            self.reflection_model = reflection_model or os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+        elif self.provider == "boxapi":
+            self.api_key = api_key if api_key is not None else (os.environ.get("BOXAPI_API_KEY") or os.environ.get("OPENAI_API_KEY", ""))
+            self.base_url = (base_url or os.environ.get("BOXAPI_BASE_URL") or "https://ai.boxapi.ir/ai/v1").rstrip("/")
+            self.macro_model = macro_model or os.environ.get("BOXAPI_MINI_MODEL", "gpt-5.4-mini")
+            self.debate_model = debate_model or os.environ.get("BOXAPI_MODEL", "gpt-6-astra")
+            self.reflection_model = reflection_model or os.environ.get("BOXAPI_MINI_MODEL", "gpt-5.4-mini")
+        else:
+            # Offline mode
+            self.api_key = api_key or ""
+            self.base_url = base_url or ""
+            self.macro_model = macro_model or "offline"
+            self.debate_model = debate_model or "offline"
+            self.reflection_model = reflection_model or "offline"
 
         self.stats = GatewayStats()
 
     @property
     def is_configured(self) -> bool:
-        """True if an API key is present and network calls are permitted."""
-        return bool(self.api_key) and self.enable_network
+        """True if network is enabled and an API key is present."""
+        return self.enable_network and bool(self.api_key)
 
     @property
     def budget_exhausted(self) -> bool:
-        """True if estimated cost has exceeded the safety budget cap."""
+        """True if spend exceeds safety budget (only applies to paid providers like BoxAPI)."""
+        if self.provider == "gemini":
+            return False  # Google AI Studio free tier
         return self.stats.estimated_cost_usd >= self.budget_limit_usd
 
     def chat_completion(
@@ -127,7 +169,7 @@ class BoxAPIGateway:
         max_tokens: int = 500,
         response_format_json: bool = True,
     ) -> Optional[Dict[str, Any]]:
-        """Dispatches an OpenAI-compatible /chat/completions request via urllib.
+        """Dispatches an OpenAI-compatible /chat/completions request.
         
         Returns parsed JSON dict, or None on failure/budget exhaustion (triggering fallback).
         """
@@ -136,8 +178,8 @@ class BoxAPIGateway:
 
         if self.budget_exhausted:
             logger.warning(
-                f"[BoxAPI Budget Guard] Spend limit (${self.budget_limit_usd:.2f}) reached. "
-                f"Falling back to deterministic quantitative engine."
+                f"[{self.provider.upper()} Budget Guard] Spend limit (${self.budget_limit_usd:.2f}) reached. "
+                f"Defaulting to quantitative engine."
             )
             return None
 
@@ -153,7 +195,6 @@ class BoxAPIGateway:
         if response_format_json:
             payload["response_format"] = {"type": "json_object"}
 
-        req_data = json.dumps(payload).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -161,32 +202,37 @@ class BoxAPIGateway:
             "User-Agent": "StarCoach-TradingEngine/1.0",
         }
 
-        req = urllib.request.Request(endpoint, data=req_data, headers=headers, method="POST")
-
         self.stats.total_calls += 1
-        t0 = time.perf_counter()
 
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
-                status_code = resp.getcode()
-                raw_body = resp.read().decode("utf-8")
+            if HAS_REQUESTS:
+                resp = requests.post(endpoint, json=payload, headers=headers, timeout=self.timeout_seconds)
+                status_code = resp.status_code
+                if status_code != 200:
+                    self.stats.failed_calls += 1
+                    logger.warning(f"[{self.provider.upper()} Error] HTTP {status_code}: {resp.text[:200]}")
+                    return None
+                data = resp.json()
+            else:
+                req_data = json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(endpoint, data=req_data, headers=headers, method="POST")
+                with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
+                    status_code = resp.getcode()
+                    raw_body = resp.read().decode("utf-8")
+                if status_code != 200:
+                    self.stats.failed_calls += 1
+                    return None
+                data = json.loads(raw_body)
 
-            if status_code != 200:
-                self.stats.failed_calls += 1
-                logger.warning(f"[BoxAPI Error] HTTP {status_code}: {raw_body[:200]}")
-                return None
-
-            data = json.loads(raw_body)
             self.stats.successful_calls += 1
 
-            # Track tokens & budget
+            # Token tracking & budget accounting
             usage = data.get("usage", {})
             p_tokens = usage.get("prompt_tokens", 0)
             c_tokens = usage.get("completion_tokens", 0)
             self.stats.total_prompt_tokens += p_tokens
             self.stats.total_completion_tokens += c_tokens
 
-            # Compute estimated cost
             rates = self.MODEL_PRICING.get(target_model, {"prompt": 0.50, "completion": 2.00})
             call_cost = (p_tokens / 1_000_000.0 * rates["prompt"]) + (c_tokens / 1_000_000.0 * rates["completion"])
             self.stats.estimated_cost_usd += call_cost
@@ -197,24 +243,16 @@ class BoxAPIGateway:
 
             content = choices[0].get("message", {}).get("content", "")
             if response_format_json:
-                try:
-                    return json.loads(content)
-                except Exception:
-                    # Strip any markdown fences if present
-                    clean = content.strip()
-                    if clean.startswith("```"):
-                        lines = clean.splitlines()
-                        clean = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
-                    return json.loads(clean)
+                clean = content.strip()
+                if clean.startswith("```"):
+                    lines = clean.splitlines()
+                    clean = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
+                return json.loads(clean)
             return {"content": content}
 
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
-            self.stats.failed_calls += 1
-            logger.warning(f"[BoxAPI Gateway Fallback] Call failed: {e}. Defaulting to quantitative engine.")
-            return None
         except Exception as e:
             self.stats.failed_calls += 1
-            logger.warning(f"[BoxAPI Gateway Unexpected Error] {e}. Defaulting to quantitative engine.")
+            logger.warning(f"[{self.provider.upper()} Gateway Fallback] Call failed: {e}. Defaulting to quantitative engine.")
             return None
 
     def evaluate_macro_regime(
@@ -223,7 +261,7 @@ class BoxAPIGateway:
         indicators: Dict[str, Any],
         recent_lessons: Optional[List[str]] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Evaluates macro market regime using cost-efficient gpt-5.4-mini."""
+        """Evaluates macro market regime."""
         system_prompt = (
             "You are the Macro Regime Strategist for an autonomous crypto trading fund operating "
             "on the Wallex exchange with a 5,000,000 TMN credit facility.\n"
@@ -255,7 +293,7 @@ class BoxAPIGateway:
         bear_thesis: Dict[str, Any],
         recent_lessons: Optional[List[str]] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Adjudicates dialectical Bull vs Bear debate using flagship gpt-6-astra."""
+        """Adjudicates dialectical Bull vs Bear debate."""
         system_prompt = (
             "You are the Chief Risk Arbiter presiding over an adversarial Bull vs. Bear debate "
             "for an institutional crypto portfolio on Wallex.\n"
@@ -289,7 +327,7 @@ class BoxAPIGateway:
         self,
         trade_post_mortem: Dict[str, Any],
     ) -> Optional[str]:
-        """Distills qualitative behavioral lesson from closed trade using gpt-5.4-mini."""
+        """Distills qualitative behavioral lesson from closed trade."""
         system_prompt = (
             "You are a Post-Trade Reflection Evaluator adhering to the FinMem pattern.\n"
             "Analyze the completed round-trip trade, evaluate whether entry/exit execution followed rules, "
@@ -305,3 +343,7 @@ class BoxAPIGateway:
         if res and isinstance(res, dict) and "lesson" in res:
             return str(res["lesson"])
         return None
+
+
+# Backward-compatibility alias
+BoxAPIGateway = LLMGateway

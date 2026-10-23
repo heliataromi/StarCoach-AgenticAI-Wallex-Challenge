@@ -31,6 +31,7 @@ from src.strategy.reflection import (
 from src.strategy.llm_gateway import (
     BoxAPIGateway,
     GatewayStats,
+    LLMGateway,
     load_dotenv,
 )
 
@@ -57,6 +58,7 @@ __all__ = [
     "TradePostMortem",
     "EpisodicMemoryBuffer",
     "BoxAPIGateway",
+    "LLMGateway",
     "GatewayStats",
     "load_dotenv",
 ]
