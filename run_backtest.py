@@ -9,9 +9,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
+from src.strategy.llm_gateway import LLMGateway, load_dotenv
 from src.test.backtester import DeterministicBacktester
 from src.test.data_loader import generate_synthetic_market_data
+
+# Ensure .env is loaded
+load_dotenv()
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,6 +47,30 @@ def parse_args() -> argparse.Namespace:
         default=42,
         help="Random seed for reproducible synthetic market generation",
     )
+    parser.add_argument(
+        "--llm-provider",
+        type=str,
+        choices=["offline", "boxapi", "gemini"],
+        default=os.environ.get("LLM_PROVIDER", "gemini" if os.environ.get("GEMINI_API_KEY") else "offline"),
+        help="LLM provider: gemini (free dev), boxapi (production), offline (quantitative)",
+    )
+    parser.add_argument(
+        "--gemini-model",
+        type=str,
+        default=os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest"),
+        help="Gemini model (default: gemini-flash-lite-latest)",
+    )
+    parser.add_argument(
+        "--show-debate",
+        action="store_true",
+        help="Print real-time Bull vs. Bear dialectical debate transcripts",
+    )
+    parser.add_argument(
+        "--jev-hurdle",
+        type=float,
+        default=0.0050,
+        help="Minimum positive JEV net edge hurdle fraction (default: 0.0050 = +0.50%%)",
+    )
     return parser.parse_args()
 
 
@@ -56,8 +85,9 @@ async def main_async() -> int:
     print(f"Initial Capital  : {args.equity:,.0f} TMN")
     print(f"Candle Steps     : {args.candles} (15m bars, 3 regimes simulated)")
     print(f"Exchange Fee     : 0.25% maker / 0.25% taker (Wallex credit schedule)")
-    print(f"JEV Hurdle       : E[V] >= +0.35% net edge required per trade")
+    print(f"JEV Hurdle       : E[V] >= +{args.jev_hurdle * 100:.2f}% net edge required per trade")
     print(f"Drawdown Limit   : 10.0% circuit breaker halt")
+    print(f"LLM Provider     : {args.llm_provider.upper()} ({args.gemini_model if args.llm_provider == 'gemini' else 'N/A'})")
     print("-" * 70)
     print("Running simulation...")
 
@@ -77,10 +107,33 @@ async def main_async() -> int:
             seed=args.seed,
         )
 
+    gateway = None
+    if args.llm_provider == "gemini":
+        gemini_key = os.environ.get("GEMINI_API_KEY", "")
+        if gemini_key:
+            print(f"Connecting to Google AI Studio Gemini Free Tier (Model: {args.gemini_model})...")
+            gateway = LLMGateway(
+                provider="gemini",
+                api_key=gemini_key,
+                macro_model=args.gemini_model,
+                debate_model=args.gemini_model,
+                reflection_model=args.gemini_model,
+                timeout_seconds=15.0,
+            )
+        else:
+            print("Note: GEMINI_API_KEY not set. Defaulting to offline quantitative engine.")
+    elif args.llm_provider == "boxapi":
+        boxapi_key = os.environ.get("BOXAPI_API_KEY", "")
+        if boxapi_key:
+            print("Connecting to BoxAPI Gateway...")
+            gateway = LLMGateway(provider="boxapi", api_key=boxapi_key, timeout_seconds=15.0)
+
     backtester = DeterministicBacktester(
         initial_equity_tmn=args.equity,
         fee_rate=0.0025,
         log_dir="decision_logs/backtest",
+        llm_gateway=gateway,
+        jev_hurdle_rate_pct=args.jev_hurdle,
     )
 
     res = await backtester.run(market_data)
@@ -106,7 +159,28 @@ async def main_async() -> int:
     print(f"Deadline Liquidation  : {liq_str:>18}")
     print(f"Final Toman Cash      : {res.final_toman_balance:>18,.0f} TMN")
     print(f"Remaining Crypto Coins: {res.final_crypto_balances}")
+    print("-" * 70)
+    audit_label = "VERIFIED (100% SHA-256 Tamper-Evident)" if res.audit_integrity_valid else "COMPROMISED"
+    print(f"Audit Trail Integrity : {audit_label:>18}")
+    if gateway and gateway.is_configured:
+        print(f"LLM Calls (Success/Tot): {gateway.stats.successful_calls}/{gateway.stats.total_calls}")
+        print(f"LLM Spend             : ${gateway.stats.estimated_cost_usd:.4f} USD")
     print("=" * 70 + "\n")
+
+    if args.show_debate and getattr(backtester, "_last_macro_agent", None):
+        print("\n" + "=" * 70)
+        print("          FINAL MULTI-AGENT BULL vs. BEAR DEBATE TRANSCRIPTS")
+        print("=" * 70)
+        agent = backtester._last_macro_agent
+        for sym in symbols:
+            tx = agent.get_debate_transcript(sym)
+            if tx:
+                print(f"\n[Symbol: {sym}] Arbiter Ruling: {tx.arbiter_verdict} (Confidence: {tx.confidence:.2f})")
+                print(f"  ▲ BULL Thesis  : Conviction={tx.bull_thesis.bull_score:.2f} | Target: {tx.bull_thesis.target_price:,.0f} TMN")
+                print(f"    Catalysts    : {tx.bull_thesis.momentum_catalyst}")
+                print(f"  ▼ BEAR Thesis  : Conviction={tx.bear_thesis.bear_score:.2f} | Invalidation: {tx.bear_thesis.invalidation_price:,.0f} TMN")
+                print(f"    Key Hazards  : {tx.bear_thesis.risk_factor}")
+                print(f"  ⚖ ARBITER NOTE : {tx.summary_reasoning}")
 
     return 0
 

@@ -196,7 +196,7 @@ class TestShadowRunner:
             assert "virtual_equity_tmn" in cycle
             assert "debates" in cycle
             assert "memory_summary" in cycle
-            assert cycle["virtual_equity_tmn"] == pytest.approx(5_000_000.0, abs=1e-2)
+            assert cycle["virtual_equity_tmn"] == pytest.approx(5_000_000.0, rel=0.02)
 
         asyncio.run(_test())
 

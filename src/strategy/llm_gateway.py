@@ -87,13 +87,27 @@ class LLMGateway:
     """Unified OpenAI-compatible Gateway supporting BoxAPI and Google AI Studio Gemini."""
 
     MODEL_PRICING = {
-        # Google AI Studio Free Tier
-        "gemini-1.5-flash": {"prompt": 0.00, "completion": 0.00},
+        # Google AI Studio Free Tier ($0.00)
+        "gemini-flash-lite-latest": {"prompt": 0.00, "completion": 0.00},
+        "gemini-flash-latest": {"prompt": 0.00, "completion": 0.00},
+        "gemini-3.8-flash": {"prompt": 0.00, "completion": 0.00},
+        "gemini-3.6-flash": {"prompt": 0.00, "completion": 0.00},
+        "gemini-3.5-flash-lite": {"prompt": 0.00, "completion": 0.00},
+        "gemini-3.1-flash-lite": {"prompt": 0.00, "completion": 0.00},
+        "gemini-3.1-pro-preview": {"prompt": 0.00, "completion": 0.00},
+        "gemini-3-flash-preview": {"prompt": 0.00, "completion": 0.00},
+        "gemini-4-argon": {"prompt": 0.00, "completion": 0.00},
+        "gemini-2.5-flash": {"prompt": 0.00, "completion": 0.00},
+        "gemini-2.5-flash-lite": {"prompt": 0.00, "completion": 0.00},
+        "gemini-2.5-pro": {"prompt": 0.00, "completion": 0.00},
         "gemini-2.0-flash": {"prompt": 0.00, "completion": 0.00},
+        "gemini-1.5-flash": {"prompt": 0.00, "completion": 0.00},
         # BoxAPI Hackathon Tier (per 1M tokens)
-        "gpt-5.4-mini": {"prompt": 0.15, "completion": 0.60},
+        "gpt-5.4-nano": {"prompt": 0.02, "completion": 0.08},
+        "gpt-5.4-mini": {"prompt": 0.09, "completion": 0.36},
+        "gpt-5.4": {"prompt": 1.25, "completion": 5.00},
         "gpt-5-mini": {"prompt": 0.15, "completion": 0.60},
-        "gpt-6-astra": {"prompt": 2.50, "completion": 10.00},
+        "gpt-6-astra": {"prompt": 0.60, "completion": 2.40},
         "gpt-6.1-sol": {"prompt": 2.50, "completion": 10.00},
         "gpt-5.6-terra": {"prompt": 1.00, "completion": 4.00},
     }
@@ -107,7 +121,7 @@ class LLMGateway:
         debate_model: Optional[str] = None,
         reflection_model: Optional[str] = None,
         budget_limit_usd: float = 2.50,
-        timeout_seconds: float = 6.0,
+        timeout_seconds: float = 15.0,
         enable_network: bool = True,
     ) -> None:
         load_dotenv()
@@ -130,9 +144,9 @@ class LLMGateway:
         if self.provider == "gemini":
             self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY", "")
             self.base_url = (base_url or os.environ.get("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
-            self.macro_model = macro_model or os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
-            self.debate_model = debate_model or os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
-            self.reflection_model = reflection_model or os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+            self.macro_model = macro_model or os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+            self.debate_model = debate_model or os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+            self.reflection_model = reflection_model or os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
         elif self.provider == "boxapi":
             self.api_key = api_key if api_key is not None else (os.environ.get("BOXAPI_API_KEY") or os.environ.get("OPENAI_API_KEY", ""))
             self.base_url = (base_url or os.environ.get("BOXAPI_BASE_URL") or "https://ai.boxapi.ir/ai/v1").rstrip("/")
@@ -186,14 +200,12 @@ class LLMGateway:
         target_model = model or self.macro_model
         endpoint = f"{self.base_url}/chat/completions"
 
-        payload: Dict[str, Any] = {
-            "model": target_model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-        if response_format_json:
-            payload["response_format"] = {"type": "json_object"}
+        # Determine candidate models with intelligent fallback for transient provider spikes
+        candidate_models = [target_model]
+        if self.provider == "gemini":
+            for fb in ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3-flash-preview"]:
+                if fb not in candidate_models:
+                    candidate_models.append(fb)
 
         headers = {
             "Content-Type": "application/json",
@@ -204,56 +216,78 @@ class LLMGateway:
 
         self.stats.total_calls += 1
 
-        try:
-            if HAS_REQUESTS:
-                resp = requests.post(endpoint, json=payload, headers=headers, timeout=self.timeout_seconds)
-                status_code = resp.status_code
-                if status_code != 200:
-                    self.stats.failed_calls += 1
-                    logger.warning(f"[{self.provider.upper()} Error] HTTP {status_code}: {resp.text[:200]}")
-                    return None
-                data = resp.json()
+        for curr_model in candidate_models:
+            payload: Dict[str, Any] = {
+                "model": curr_model,
+                "messages": messages,
+            }
+            if self.provider == "boxapi" or any(prefix in curr_model for prefix in ["gpt-5", "gpt-6", "o1", "o3", "o4"]):
+                payload["max_completion_tokens"] = max_tokens
             else:
-                req_data = json.dumps(payload).encode("utf-8")
-                req = urllib.request.Request(endpoint, data=req_data, headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
-                    status_code = resp.getcode()
-                    raw_body = resp.read().decode("utf-8")
-                if status_code != 200:
-                    self.stats.failed_calls += 1
+                payload["temperature"] = temperature
+                payload["max_tokens"] = max_tokens
+            if response_format_json:
+                payload["response_format"] = {"type": "json_object"}
+
+            try:
+                if HAS_REQUESTS:
+                    resp = requests.post(endpoint, json=payload, headers=headers, timeout=self.timeout_seconds)
+                    status_code = resp.status_code
+                    if status_code != 200:
+                        if status_code in (503, 429, 500, 502) and len(candidate_models) > 1 and curr_model != candidate_models[-1]:
+                            logger.info(f"[{self.provider.upper()}] Model {curr_model} returned {status_code}; trying fallback...")
+                            continue
+                        self.stats.failed_calls += 1
+                        logger.warning(f"[{self.provider.upper()} Error] HTTP {status_code}: {resp.text[:200]}")
+                        return None
+                    data = resp.json()
+                else:
+                    req_data = json.dumps(payload).encode("utf-8")
+                    req = urllib.request.Request(endpoint, data=req_data, headers=headers, method="POST")
+                    with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
+                        status_code = resp.getcode()
+                        raw_body = resp.read().decode("utf-8")
+                    if status_code != 200:
+                        self.stats.failed_calls += 1
+                        return None
+                    data = json.loads(raw_body)
+
+                self.stats.successful_calls += 1
+
+                # Token tracking & budget accounting
+                usage = data.get("usage", {})
+                p_tokens = usage.get("prompt_tokens", 0)
+                c_tokens = usage.get("completion_tokens", 0)
+                self.stats.total_prompt_tokens += p_tokens
+                self.stats.total_completion_tokens += c_tokens
+
+                rates = self.MODEL_PRICING.get(curr_model, {"prompt": 0.50, "completion": 2.00})
+                call_cost = (p_tokens / 1_000_000.0 * rates["prompt"]) + (c_tokens / 1_000_000.0 * rates["completion"])
+                self.stats.estimated_cost_usd += call_cost
+
+                choices = data.get("choices", [])
+                if not choices:
                     return None
-                data = json.loads(raw_body)
 
-            self.stats.successful_calls += 1
+                content = choices[0].get("message", {}).get("content", "")
+                if response_format_json:
+                    clean = content.strip()
+                    if clean.startswith("```"):
+                        lines = clean.splitlines()
+                        clean = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
+                    return json.loads(clean)
+                return {"content": content}
 
-            # Token tracking & budget accounting
-            usage = data.get("usage", {})
-            p_tokens = usage.get("prompt_tokens", 0)
-            c_tokens = usage.get("completion_tokens", 0)
-            self.stats.total_prompt_tokens += p_tokens
-            self.stats.total_completion_tokens += c_tokens
-
-            rates = self.MODEL_PRICING.get(target_model, {"prompt": 0.50, "completion": 2.00})
-            call_cost = (p_tokens / 1_000_000.0 * rates["prompt"]) + (c_tokens / 1_000_000.0 * rates["completion"])
-            self.stats.estimated_cost_usd += call_cost
-
-            choices = data.get("choices", [])
-            if not choices:
+            except Exception as e:
+                if len(candidate_models) > 1 and curr_model != candidate_models[-1]:
+                    logger.info(f"[{self.provider.upper()}] Model {curr_model} failed ({e}); trying fallback...")
+                    continue
+                self.stats.failed_calls += 1
+                logger.warning(f"[{self.provider.upper()} Gateway Fallback] Call failed: {e}. Defaulting to quantitative engine.")
                 return None
 
-            content = choices[0].get("message", {}).get("content", "")
-            if response_format_json:
-                clean = content.strip()
-                if clean.startswith("```"):
-                    lines = clean.splitlines()
-                    clean = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
-                return json.loads(clean)
-            return {"content": content}
-
-        except Exception as e:
-            self.stats.failed_calls += 1
-            logger.warning(f"[{self.provider.upper()} Gateway Fallback] Call failed: {e}. Defaulting to quantitative engine.")
-            return None
+        self.stats.failed_calls += 1
+        return None
 
     def evaluate_macro_regime(
         self,

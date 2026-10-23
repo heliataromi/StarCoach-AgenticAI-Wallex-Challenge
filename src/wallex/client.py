@@ -411,8 +411,9 @@ class WallexClient(BaseWallexClient):
         raw = await self._call_mcp_tool("wallex_basic_get_market_depth", {"symbol": symbol}, priority=2)
         
         # Parse bids and asks from raw payload
-        raw_bids = raw.get("bids", []) if isinstance(raw, dict) else []
-        raw_asks = raw.get("asks", []) if isinstance(raw, dict) else []
+        result = raw.get("result", raw) if isinstance(raw, dict) else {}
+        raw_bids = result.get("bid", result.get("bids", [])) if isinstance(result, dict) else []
+        raw_asks = result.get("ask", result.get("asks", [])) if isinstance(result, dict) else []
         timestamp = raw.get("timestamp", time.time() * 1000.0) if isinstance(raw, dict) else (time.time() * 1000.0)
 
         # Standardize tuples of (price, volume)
@@ -457,13 +458,32 @@ class WallexClient(BaseWallexClient):
         to_ts: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Fetch historical OHLCV candles."""
-        args: Dict[str, Any] = {"symbol": symbol, "resolution": resolution}
-        if from_ts is not None:
-            args["from"] = from_ts
-        if to_ts is not None:
-            args["to"] = to_ts
+        now_sec = int(time.time())
+        if to_ts is None:
+            to_ts = now_sec
+        if from_ts is None:
+            from_ts = now_sec - 86400  # Default to last 24h
+
+        args: Dict[str, Any] = {
+            "symbol": symbol,
+            "resolution": resolution,
+            "from": from_ts,
+            "to": to_ts,
+        }
 
         res = await self._call_mcp_tool("wallex_basic_candle_history", args, priority=2)
+        if isinstance(res, dict) and "t" in res and "c" in res:
+            candles = []
+            for i in range(len(res["t"])):
+                candles.append({
+                    "timestamp": res["t"][i] * 1000,
+                    "open": float(res["o"][i]),
+                    "high": float(res["h"][i]),
+                    "low": float(res["l"][i]),
+                    "close": float(res["c"][i]),
+                    "volume": float(res["v"][i]),
+                })
+            return candles
         if isinstance(res, dict) and "candles" in res:
             return res["candles"]
         if isinstance(res, list):
