@@ -9,8 +9,10 @@ Autonomous reasoner executing on a macro cadence (5-15 min) or event triggers:
 from __future__ import annotations
 
 import time
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
+from src.strategy.debate import BearResearcher, BullResearcher, DebateTranscript, RiskArbiter
 from src.strategy.models import MacroTradingPolicy, MarketRegime
+from src.strategy.reflection import EpisodicMemoryBuffer
 from src.strategy.regimes import LatentRegimeClassifier
 from src.wallex.models import Candle, OrderBook
 
@@ -24,11 +26,22 @@ class MacroAgent:
         default_policy_ttl_seconds: float = 300.0,
         classifier: Optional[LatentRegimeClassifier] = None,
         llm_reasoner: Optional[Callable[[Dict[str, Any]], str]] = None,
+        memory: Optional[EpisodicMemoryBuffer] = None,
+        enable_debate: bool = True,
     ) -> None:
         self.allowed_symbols = allowed_symbols or ["BTCTMN", "ETHTMN", "USDTTMN"]
         self.default_policy_ttl_seconds = default_policy_ttl_seconds
         self.classifier = classifier or LatentRegimeClassifier()
         self.llm_reasoner = llm_reasoner
+        self.memory = memory or EpisodicMemoryBuffer()
+        self.enable_debate = enable_debate
+
+        # Dialectical debate components
+        self.bull_researcher = BullResearcher()
+        self.bear_researcher = BearResearcher()
+        self.risk_arbiter = RiskArbiter()
+        self.latest_debates: Dict[str, DebateTranscript] = {}
+
         self.current_policy: Optional[MacroTradingPolicy] = None
 
     def evaluate_policy(
@@ -45,14 +58,25 @@ class MacroAgent:
         symbol_confidences: Dict[str, float] = {}
         symbol_rationales: Dict[str, str] = {}
 
-        # Classify each allowed symbol
+        # Classify each allowed symbol via Dialectical Debate or Classifier
         for symbol in self.allowed_symbols:
             candles = market_candles.get(symbol, [])
             ob = orderbooks.get(symbol)
-            regime, conf, rationale = self.classifier.classify(candles, ob)
-            symbol_regimes[symbol] = regime
-            symbol_confidences[symbol] = conf
-            symbol_rationales[symbol] = rationale
+            if self.enable_debate and len(candles) >= 5:
+                lessons = self.memory.get_recent_lessons(symbol, limit=2)
+                bull_thesis = self.bull_researcher.evaluate(symbol, candles, ob, memory_insights=lessons)
+                bear_thesis = self.bear_researcher.evaluate(symbol, candles, ob, memory_insights=lessons)
+                transcript = self.risk_arbiter.adjudicate(symbol, bull_thesis, bear_thesis, current_time=now)
+                self.latest_debates[symbol] = transcript
+
+                symbol_regimes[symbol] = transcript.recommended_regime
+                symbol_confidences[symbol] = transcript.confidence
+                symbol_rationales[symbol] = transcript.summary_reasoning
+            else:
+                regime, conf, rationale = self.classifier.classify(candles, ob)
+                symbol_regimes[symbol] = regime
+                symbol_confidences[symbol] = conf
+                symbol_rationales[symbol] = rationale
 
         # Check for Panic contagion
         panic_symbols = [s for s, r in symbol_regimes.items() if r == MarketRegime.HIGH_VOLATILITY_PANIC]
@@ -129,3 +153,32 @@ class MacroAgent:
         if self.current_policy is not None and not self.current_policy.is_expired(now):
             return self.current_policy
         return self.evaluate_policy(market_candles, market_orderbooks, current_time=now)
+
+    def record_trade_outcome(
+        self,
+        symbol: str,
+        entry_price: float,
+        exit_price: float,
+        quantity: float,
+        pnl_tmn: float,
+        fee_tmn: float,
+        regime: MarketRegime = MarketRegime.BULLISH_TREND,
+        exit_reason: str = "Target or stop executed",
+        timestamp: Optional[float] = None,
+    ) -> None:
+        """Records completed trade outcome into episodic reflection memory."""
+        self.memory.record_completed_trade(
+            symbol=symbol,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            quantity=quantity,
+            pnl_tmn=pnl_tmn,
+            fee_tmn=fee_tmn,
+            regime=regime,
+            exit_reason=exit_reason,
+            timestamp=timestamp,
+        )
+
+    def get_debate_transcript(self, symbol: str) -> Optional[DebateTranscript]:
+        """Retrieves the latest Bull vs. Bear debate transcript for a symbol."""
+        return self.latest_debates.get(symbol)
