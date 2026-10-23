@@ -42,19 +42,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         choices=["backtest", "shadow", "live"],
-        default="backtest",
+        default=os.environ.get("TRADING_MODE", "backtest"),
         help="Operating mode: backtest (historical/synthetic), shadow (live paper-trading), live (real trading)",
     )
     parser.add_argument(
         "--symbols",
         type=str,
-        default="BTCTMN,ETHTMN,USDTTMN",
+        default=os.environ.get("TRADING_SYMBOLS", "BTCTMN,ETHTMN,USDTTMN"),
         help="Comma-separated symbols to trade (default: BTCTMN,ETHTMN,USDTTMN)",
     )
     parser.add_argument(
         "--equity",
         type=float,
-        default=5_000_000.0,
+        default=float(os.environ.get("INITIAL_EQUITY_TMN", "5000000")),
         help="Initial credit capital in Iranian Toman (default: 5,000,000 TMN)",
     )
     parser.add_argument(
