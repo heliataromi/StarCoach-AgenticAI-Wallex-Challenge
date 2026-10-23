@@ -28,6 +28,11 @@ from src.strategy.reflection import (
     TradePostMortem,
     EpisodicMemoryBuffer,
 )
+from src.strategy.llm_gateway import (
+    BoxAPIGateway,
+    GatewayStats,
+    load_dotenv,
+)
 
 __all__ = [
     "MarketRegime",
@@ -51,4 +56,7 @@ __all__ = [
     "RiskArbiter",
     "TradePostMortem",
     "EpisodicMemoryBuffer",
+    "BoxAPIGateway",
+    "GatewayStats",
+    "load_dotenv",
 ]

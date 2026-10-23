@@ -62,11 +62,13 @@ class DeterministicBacktester:
         fee_rate: float = 0.0025,  # 0.25% Wallex standard fee
         log_dir: str = "decision_logs/backtest",
         macro_cadence_steps: int = 15,
+        llm_gateway: Optional[Any] = None,
     ) -> None:
         self.initial_equity_tmn = float(initial_equity_tmn)
         self.fee_rate = fee_rate
         self.log_dir = log_dir
         self.macro_cadence_steps = macro_cadence_steps
+        self.llm_gateway = llm_gateway
 
     async def run(
         self,
@@ -105,7 +107,11 @@ class DeterministicBacktester:
             position_sizer=position_sizer,
             drawdown_sentinel=drawdown_sentinel,
         )
-        macro_agent = MacroAgent(allowed_symbols=symbols, default_policy_ttl_seconds=14400.0)
+        macro_agent = MacroAgent(
+            allowed_symbols=symbols,
+            default_policy_ttl_seconds=14400.0,
+            llm_gateway=self.llm_gateway,
+        )
         signal_generator = MultiRegimeSignalGenerator()
         auditor = DecisionAuditor(log_dir=self.log_dir, auto_flush=False)
 

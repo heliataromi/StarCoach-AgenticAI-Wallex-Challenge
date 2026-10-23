@@ -22,11 +22,15 @@ import sys
 import time
 from typing import List, Optional
 
+from src.strategy.llm_gateway import BoxAPIGateway, load_dotenv
 from src.test.backtester import DeterministicBacktester, BacktestResult
 from src.test.data_loader import generate_synthetic_market_data
 from src.test.shadow_runner import ShadowRunner
 from src.wallex.client import WallexClient
 from src.wallex.mock_client import MockWallexClient
+
+# Automatically load environment variables from .env on startup
+load_dotenv()
 
 
 def parse_args() -> argparse.Namespace:
@@ -106,9 +110,39 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--llm-provider",
         type=str,
-        choices=["offline", "deepseek", "gemini", "claude", "ollama"],
-        default="offline",
-        help="LLM provider architecture (default: offline high-speed quantitative debate)",
+        choices=["offline", "boxapi", "deepseek", "gemini", "claude", "ollama"],
+        default="boxapi" if os.environ.get("BOXAPI_API_KEY") else "offline",
+        help="LLM provider architecture (default: boxapi if key set, else offline quantitative debate)",
+    )
+    parser.add_argument(
+        "--boxapi-key",
+        type=str,
+        default=os.environ.get("BOXAPI_API_KEY", ""),
+        help="BoxAPI Key for official StarCoach hackathon models (reads BOXAPI_API_KEY from .env)",
+    )
+    parser.add_argument(
+        "--boxapi-base-url",
+        type=str,
+        default=os.environ.get("BOXAPI_BASE_URL", "https://ai.boxapi.ir/ai/v1"),
+        help="BoxAPI endpoint URL (default: https://ai.boxapi.ir/ai/v1)",
+    )
+    parser.add_argument(
+        "--boxapi-model",
+        type=str,
+        default=os.environ.get("BOXAPI_MODEL", "gpt-6-astra"),
+        help="Flagship model for high-conviction debate arbiter (default: gpt-6-astra)",
+    )
+    parser.add_argument(
+        "--boxapi-mini-model",
+        type=str,
+        default=os.environ.get("BOXAPI_MINI_MODEL", "gpt-5.4-mini"),
+        help="Low-cost model for macro surveillance and post-mortem reflection (default: gpt-5.4-mini)",
+    )
+    parser.add_argument(
+        "--budget-usd",
+        type=float,
+        default=2.50,
+        help="Maximum spend guard for BoxAPI credit in USD (default: $2.50 of $3.00)",
     )
     return parser.parse_args()
 
@@ -144,10 +178,23 @@ async def run_backtest_mode(args: argparse.Namespace, symbols: List[str]) -> int
         )
 
     log_path = os.path.join(args.log_dir, "backtest")
+    gateway = None
+    if args.llm_provider == "boxapi" and args.boxapi_key:
+        print(f"Connecting to BoxAPI Gateway (Flagship: {args.boxapi_model}, Mini: {args.boxapi_mini_model})...")
+        gateway = BoxAPIGateway(
+            api_key=args.boxapi_key,
+            base_url=args.boxapi_base_url,
+            macro_model=args.boxapi_mini_model,
+            debate_model=args.boxapi_model,
+            reflection_model=args.boxapi_mini_model,
+            budget_limit_usd=args.budget_usd,
+        )
+
     backtester = DeterministicBacktester(
         initial_equity_tmn=args.equity,
         fee_rate=0.0025,
         log_dir=log_path,
+        llm_gateway=gateway,
     )
 
     t0 = time.perf_counter()
@@ -181,6 +228,8 @@ async def run_backtest_mode(args: argparse.Namespace, symbols: List[str]) -> int
     print(f"Audit Trail Integrity : {audit_label}")
     if res.reflection_summary:
         print(f"Post-Trade Reflection : {res.reflection_summary}")
+    if gateway:
+        print(f"BoxAPI Credit Usage   : ${gateway.stats.estimated_cost_usd:.4f} / ${gateway.budget_limit_usd:.2f} (Calls: {gateway.stats.successful_calls}/{gateway.stats.total_calls}, Tokens: {gateway.stats.total_prompt_tokens + gateway.stats.total_completion_tokens})")
     print("=" * 70)
 
     if args.show_debate and getattr(backtester, "_last_macro_agent", None):
@@ -225,12 +274,25 @@ async def run_shadow_mode(args: argparse.Namespace, symbols: List[str]) -> int:
         live_client = MockWallexClient(initial_tmn=args.equity)
 
     log_path = os.path.join(args.log_dir, "shadow")
+    gateway = None
+    if args.llm_provider == "boxapi" and args.boxapi_key:
+        print(f"Connecting to BoxAPI Gateway (Flagship: {args.boxapi_model}, Mini: {args.boxapi_mini_model})...")
+        gateway = BoxAPIGateway(
+            api_key=args.boxapi_key,
+            base_url=args.boxapi_base_url,
+            macro_model=args.boxapi_mini_model,
+            debate_model=args.boxapi_model,
+            reflection_model=args.boxapi_mini_model,
+            budget_limit_usd=args.budget_usd,
+        )
+
     runner = ShadowRunner(
         live_client=live_client,
         symbols=symbols,
         initial_equity_tmn=args.equity,
         poll_interval_seconds=args.poll_interval,
         log_dir=log_path,
+        llm_gateway=gateway,
     )
 
     if args.iterations > 0:
@@ -246,6 +308,8 @@ async def run_shadow_mode(args: argparse.Namespace, symbols: List[str]) -> int:
         print(f"Audit Integrity       : VERIFIED (100% SHA-256 Tamper-Evident)")
         mem_sum = runner.macro_agent.memory.generate_reflection_summary()
         print(f"Memory Reflection     : {mem_sum}")
+        if gateway:
+            print(f"BoxAPI Credit Usage   : ${gateway.stats.estimated_cost_usd:.4f} / ${gateway.budget_limit_usd:.2f} (Calls: {gateway.stats.successful_calls}/{gateway.stats.total_calls}, Tokens: {gateway.stats.total_prompt_tokens + gateway.stats.total_completion_tokens})")
         print("=" * 70)
 
         if args.show_debate:
