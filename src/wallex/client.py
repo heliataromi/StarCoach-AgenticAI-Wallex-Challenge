@@ -222,7 +222,7 @@ class WallexClient(BaseWallexClient):
         }
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
-            headers["x-api-key"] = self._api_key
+            headers["X-API-Key"] = self._api_key
         return headers
 
     def _unwrap_mcp_response(self, response_data: Any) -> Any:
