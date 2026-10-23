@@ -26,12 +26,18 @@ class JEVEvaluator:
         win_probability: float,
         side: str = "BUY",
         custom_fee_pct: Optional[float] = None,
+        symbol: Optional[str] = None,
     ) -> JEVEvaluationResult:
         """
         Calculates E[V] = P(Win) * GainPct - (1 - P(Win)) * LossPct - RoundTripFees.
         Returns JEVEvaluationResult with verdict and detailed metrics.
         """
-        fee_pct = custom_fee_pct if custom_fee_pct is not None else self.config.round_trip_fee_pct
+        if custom_fee_pct is not None:
+            fee_pct = custom_fee_pct
+        elif symbol is not None:
+            fee_pct = self.config.calculate_round_trip_fee(symbol)
+        else:
+            fee_pct = self.config.round_trip_fee_pct
         hurdle = self.config.jev_hurdle_rate_pct
         min_rr = self.config.min_reward_to_risk
 

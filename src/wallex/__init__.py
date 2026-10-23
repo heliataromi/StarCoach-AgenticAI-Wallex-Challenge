@@ -18,6 +18,7 @@ from src.wallex.models import (
     OrderSide,
     OrderStatus,
     OrderType,
+    WALLEX_CREDIT_DISABLED_SYMBOLS,
     WallexAPIError,
     WallexAuthError,
     WallexClientError,
@@ -25,6 +26,9 @@ from src.wallex.models import (
     WallexNetworkError,
     WallexOrderError,
     WallexRateLimitError,
+    is_credit_market_supported,
+    normalize_symbol,
+    validate_credit_market_symbol,
 )
 from src.wallex.rate_limiter import PriorityWaiter, TokenBucketRateLimiter
 
@@ -52,4 +56,8 @@ __all__ = [
     "WallexInsufficientFundsError",
     "WallexAPIError",
     "CorruptMarketDataError",
+    "WALLEX_CREDIT_DISABLED_SYMBOLS",
+    "normalize_symbol",
+    "is_credit_market_supported",
+    "validate_credit_market_symbol",
 ]

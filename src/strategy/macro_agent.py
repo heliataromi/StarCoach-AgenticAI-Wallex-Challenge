@@ -15,7 +15,7 @@ from src.strategy.llm_gateway import BoxAPIGateway
 from src.strategy.models import MacroTradingPolicy, MarketRegime
 from src.strategy.reflection import EpisodicMemoryBuffer
 from src.strategy.regimes import LatentRegimeClassifier
-from src.wallex.models import Candle, OrderBook
+from src.wallex.models import Candle, OrderBook, is_credit_market_supported
 
 
 class MacroAgent:
@@ -31,7 +31,8 @@ class MacroAgent:
         enable_debate: bool = True,
         llm_gateway: Optional[BoxAPIGateway] = None,
     ) -> None:
-        self.allowed_symbols = allowed_symbols or ["BTCTMN", "ETHTMN", "USDTTMN"]
+        raw_symbols = allowed_symbols or ["BTCTMN", "ETHTMN", "USDTTMN"]
+        self.allowed_symbols = [s for s in raw_symbols if is_credit_market_supported(s)]
         self.default_policy_ttl_seconds = default_policy_ttl_seconds
         self.classifier = classifier or LatentRegimeClassifier()
         self.llm_reasoner = llm_reasoner

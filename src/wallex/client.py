@@ -35,6 +35,7 @@ from src.wallex.models import (
     WallexNetworkError,
     WallexOrderError,
     WallexRateLimitError,
+    validate_credit_market_symbol,
 )
 from src.wallex.rate_limiter import TokenBucketRateLimiter
 
@@ -555,6 +556,7 @@ class WallexClient(BaseWallexClient):
             req_cid = str(client_order_id or f"cl-{int(time.time()*1000)}")
 
         # Validation
+        validate_credit_market_symbol(req_symbol)
         if req_qty <= 0:
             raise WallexOrderError(f"Invalid order quantity: {req_qty}")
         if req_type == "LIMIT" and req_price <= 0:

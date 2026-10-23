@@ -25,6 +25,7 @@ from src.wallex.models import (
     WallexNetworkError,
     WallexOrderError,
     WallexRateLimitError,
+    validate_credit_market_symbol,
 )
 from src.wallex.rate_limiter import TokenBucketRateLimiter
 
@@ -323,6 +324,8 @@ class MockWallexClient(BaseWallexClient):
 
         if not req_symbol or not isinstance(req_symbol, str):
             raise WallexOrderError(f"Invalid order symbol: {req_symbol}")
+
+        validate_credit_market_symbol(req_symbol)
 
         if req_side not in ("BUY", "SELL"):
             raise WallexOrderError(f"Invalid order side: {req_side}")
