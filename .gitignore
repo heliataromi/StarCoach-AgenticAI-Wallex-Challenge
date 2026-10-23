@@ -60,3 +60,7 @@ htmlcov/
 
 # Decision logs local test runs (optional sample logs kept, high-volume ignored if needed)
 *.log
+
+# Presentation Video Scripts (Private / Local only)
+docs/DEMO_VIDEO_SCRIPT.md
+
