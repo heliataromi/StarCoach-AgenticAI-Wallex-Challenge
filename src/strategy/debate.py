@@ -58,6 +58,34 @@ class DebateTranscript:
     max_allocation_pct: float     # 0.0 to 0.20
     summary_reasoning: str
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Converts transcript into a JSON-serializable dictionary for audit logging."""
+        return {
+            "symbol": self.symbol,
+            "timestamp": self.timestamp,
+            "bull_thesis": {
+                "bull_score": round(self.bull_thesis.bull_score, 4),
+                "momentum_catalyst": self.bull_thesis.momentum_catalyst,
+                "support_level": round(self.bull_thesis.support_level, 2),
+                "target_price": round(self.bull_thesis.target_price, 2),
+                "key_factors": list(self.bull_thesis.key_factors),
+                "rationale": self.bull_thesis.rationale,
+            },
+            "bear_thesis": {
+                "bear_score": round(self.bear_thesis.bear_score, 4),
+                "risk_factor": self.bear_thesis.risk_factor,
+                "resistance_level": round(self.bear_thesis.resistance_level, 2),
+                "invalidation_price": round(self.bear_thesis.invalidation_price, 2),
+                "key_risks": list(self.bear_thesis.key_risks),
+                "rationale": self.bear_thesis.rationale,
+            },
+            "arbiter_verdict": self.arbiter_verdict,
+            "recommended_regime": self.recommended_regime.value,
+            "confidence": round(self.confidence, 4),
+            "max_allocation_pct": round(self.max_allocation_pct, 4),
+            "summary_reasoning": self.summary_reasoning,
+        }
+
 
 class BullResearcher:
     """Specialized agent advocating for upside opportunities and trend continuation."""

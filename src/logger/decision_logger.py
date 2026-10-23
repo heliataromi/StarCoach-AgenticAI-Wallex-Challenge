@@ -35,6 +35,9 @@ class DecisionAuditor:
         jev_metrics: Optional[Dict[str, Any]] = None,
         risk_metrics: Optional[Dict[str, Any]] = None,
         portfolio_equity_tmn: float = 5_000_000.0,
+        debate_transcript: Optional[Any] = None,
+        memory_summary: Optional[str] = None,
+        recent_lessons: Optional[List[str]] = None,
     ) -> DecisionRecord:
         """Constructs, hashes, and persists an immutable DecisionRecord."""
         now = time.time()
@@ -51,13 +54,28 @@ class DecisionAuditor:
         indicators = dict(signal.indicators)
 
         # Package agentic reasoning
-        reasoning = {
+        reasoning: Dict[str, Any] = {
             "macro_policy_summary": policy.reasoning_summary if policy else "",
             "macro_active_regime": policy.active_regime.value if policy else signal.regime.value,
             "tactical_rationale": signal.rationale,
             "signal_confidence": signal.confidence,
             "execution_message": execution_result.message,
         }
+
+        # Enrich with dialectical debate transcript if available
+        if debate_transcript is not None:
+            if hasattr(debate_transcript, "to_dict"):
+                reasoning["debate_transcript"] = debate_transcript.to_dict()
+            elif isinstance(debate_transcript, dict):
+                reasoning["debate_transcript"] = debate_transcript
+            else:
+                reasoning["debate_transcript"] = asdict(debate_transcript)
+
+        # Enrich with episodic memory reflection if available
+        if memory_summary:
+            reasoning["episodic_memory_summary"] = memory_summary
+        if recent_lessons:
+            reasoning["recent_lessons"] = list(recent_lessons)
 
         # Package risk metrics
         risk_data = risk_metrics or {}

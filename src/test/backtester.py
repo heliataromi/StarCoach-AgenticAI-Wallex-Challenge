@@ -192,12 +192,33 @@ class DeterministicBacktester:
                         policy=current_policy,
                         current_time=step_time,
                     )
+                    debate_tx = macro_agent.get_debate_transcript(sym)
+                    memory_sum = macro_agent.memory.generate_reflection_summary()
+                    recent_lessons = macro_agent.memory.get_recent_lessons(sym)
                     auditor.record_decision(
                         signal=sig,
                         execution_result=exec_res,
                         policy=current_policy,
                         portfolio_equity_tmn=portfolio.calculate_total_equity(),
+                        debate_transcript=debate_tx,
+                        memory_summary=memory_sum,
+                        recent_lessons=recent_lessons,
                     )
+
+                    # Update episodic memory reflection on completed sell trade
+                    if exec_res.success and sig.action == SignalAction.SELL and has_pos and entry_p > 0:
+                        pnl_tmn = (exec_res.executed_price - entry_p) * exec_res.executed_quantity - exec_res.fee_paid
+                        macro_agent.record_trade_outcome(
+                            symbol=sym,
+                            entry_price=entry_p,
+                            exit_price=exec_res.executed_price,
+                            quantity=exec_res.executed_quantity,
+                            pnl_tmn=pnl_tmn,
+                            fee_tmn=exec_res.fee_paid,
+                            regime=current_policy.active_regime,
+                            exit_reason=sig.rationale,
+                            timestamp=step_time,
+                        )
 
             # Record Mark-to-Market Equity
             eq = portfolio.calculate_total_equity()
