@@ -1,0 +1,71 @@
+{
+  "record_id": "aud-20261023-1792784992851-0001",
+  "timestamp_iso": "2026-10-23T19:49:52.851024+00:00",
+  "timestamp_epoch": 1792784992.8510242,
+  "symbol": "BTCTMN",
+  "market_regime": "BULLISH_TREND",
+  "action_proposed": "BUY",
+  "execution_outcome": "SUCCESS",
+  "price": 21825499975.0,
+  "quantity": 4.581796527664654e-05,
+  "cost_tmn": 1000000.0,
+  "fee_tmn": 2500.0,
+  "latency_ms": 0.12905699986731634,
+  "jev_metrics": {},
+  "risk_metrics": {
+    "portfolio_equity_tmn": 4996991.851434666,
+    "allocation_pct": 0.2001203983778549
+  },
+  "market_indicators": {
+    "ema9": 21821692725.663677,
+    "ema21": 21820784858.182804,
+    "rsi": 59.86101234385066,
+    "atr": 174603999.8,
+    "lower_bb": 21810717040.3495,
+    "mid_bb": 21820326046.2,
+    "upper_bb": 21829935052.050503,
+    "obi": -0.04083275017494759,
+    "best_bid": 21814409378.0,
+    "best_ask": 21814409379.0
+  },
+  "agentic_reasoning": {
+    "macro_policy_summary": "Bullish trend regime: Upward momentum active on BTCTMN, ETHTMN, USDTTMN. Authorizing trend continuation and breakout trades.",
+    "macro_active_regime": "BULLISH_TREND",
+    "tactical_rationale": "Bullish trend breakout: EMA9 (21821692725.7) > EMA21 (21820784858.2), RSI=59.9, OBI=-0.04",
+    "signal_confidence": 0.8,
+    "execution_message": "Order executed successfully in 0.13ms",
+    "debate_transcript": {
+      "symbol": "BTCTMN",
+      "timestamp": 1792784989.9286344,
+      "bull_thesis": {
+        "bull_score": 0.8,
+        "momentum_catalyst": "EMA9 (21821692725.7) > EMA21 (21820784858.2) golden alignment",
+        "support_level": 21810717040.35,
+        "target_price": 22371137474.38,
+        "key_factors": [
+          "EMA9 (21821692725.7) > EMA21 (21820784858.2) golden alignment",
+          "RSI in bullish sweet-spot (59.9)",
+          "Price (21825499975.0) trading above 20-SMA baseline (21820326046.2)"
+        ],
+        "rationale": "Bull thesis for BTCTMN: Conviction=0.80. Key catalysts: EMA9 (21821692725.7) > EMA21 (21820784858.2) golden alignment; RSI in bullish sweet-spot (59.9); Price (21825499975.0) trading above 20-SMA baseline (21820326046.2). Projected target: 22,371,137,474.4 TMN with dynamic support at 21,810,717,040.3 TMN."
+      },
+      "bear_thesis": {
+        "bear_score": 0.15,
+        "risk_factor": "Price (21825499975.0) pressing against upper Bollinger Band (21829935052.1)",
+        "resistance_level": 21956452974.85,
+        "invalidation_price": 21661808725.19,
+        "key_risks": [
+          "Price (21825499975.0) pressing against upper Bollinger Band (21829935052.1)"
+        ],
+        "rationale": "Bear thesis for BTCTMN: Conviction=0.15. Key risk factors: Price (21825499975.0) pressing against upper Bollinger Band (21829935052.1). Overhead resistance at 21,956,452,974.8 TMN; downside invalidation at 21,661,808,725.2 TMN."
+      },
+      "arbiter_verdict": "APPROVE_BULLISH_TREND",
+      "recommended_regime": "BULLISH_TREND",
+      "confidence": 0.8,
+      "max_allocation_pct": 0.2,
+      "summary_reasoning": "Bull thesis prevails by delta +0.65 (Bull: 0.80 vs Bear: 0.15). Authorizing trend continuation up to 20% equity cap."
+    },
+    "episodic_memory_summary": "No closed trades in episodic memory. Strategy starting from baseline posture."
+  },
+  "hash_sha256": "ec311d399e8ac3b3e8cf12ff52c72b8b6f8d5cbc082116536a09af69bade1de8"
+}

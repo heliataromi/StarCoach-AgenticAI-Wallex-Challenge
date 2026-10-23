@@ -119,7 +119,7 @@ class DeterministicBacktester:
             llm_gateway=self.llm_gateway,
         )
         signal_generator = MultiRegimeSignalGenerator()
-        auditor = DecisionAuditor(log_dir=self.log_dir, auto_flush=False)
+        auditor = DecisionAuditor(log_dir=self.log_dir, auto_flush=True)
 
         # 2. Determine Simulation Length
         total_steps = min(len(candles) for candles in market_candles.values())

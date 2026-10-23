@@ -1,0 +1,70 @@
+{
+  "record_id": "aud-20261023-1792784920062-0003",
+  "timestamp_iso": "2026-10-23T19:48:40.062883+00:00",
+  "timestamp_epoch": 1792784920.0628831,
+  "symbol": "USDTTMN",
+  "market_regime": "BULLISH_TREND",
+  "action_proposed": "BUY",
+  "execution_outcome": "REJECTED_RISK",
+  "price": 65048.369895967386,
+  "quantity": 0.0,
+  "cost_tmn": 0.0,
+  "fee_tmn": 0.0,
+  "latency_ms": 0.03497800207696855,
+  "jev_metrics": {},
+  "risk_metrics": {
+    "portfolio_equity_tmn": 4995001.25,
+    "allocation_pct": 0.0
+  },
+  "market_indicators": {
+    "ema9": 64972.54242579577,
+    "ema21": 64966.39824504246,
+    "rsi": 55.57179039295772,
+    "atr": 221.25932346804726,
+    "lower_bb": 64644.69650430003,
+    "mid_bb": 64909.05550562059,
+    "upper_bb": 65173.41450694115,
+    "obi": 0.0,
+    "best_bid": 64999.58361854541,
+    "best_ask": 65097.15617338936
+  },
+  "agentic_reasoning": {
+    "macro_policy_summary": "Bullish trend regime: Upward momentum active on BTCTMN, ETHTMN, USDTTMN. Authorizing trend continuation and breakout trades.",
+    "macro_active_regime": "BULLISH_TREND",
+    "tactical_rationale": "Bullish trend breakout: EMA9 (64972.5) > EMA21 (64966.4), RSI=55.6, OBI=0.00",
+    "signal_confidence": 0.8,
+    "execution_message": "Position sizing rejected: Max concurrent positions limit reached (2/2)",
+    "debate_transcript": {
+      "symbol": "USDTTMN",
+      "timestamp": 1700027000.0,
+      "bull_thesis": {
+        "bull_score": 0.5,
+        "momentum_catalyst": "RSI in bullish sweet-spot (53.2)",
+        "support_level": 64610.33,
+        "target_price": 66699.61,
+        "key_factors": [
+          "RSI in bullish sweet-spot (53.2)",
+          "Price (65072.8) trading above 20-SMA baseline (64927.4)"
+        ],
+        "rationale": "Bull thesis for USDTTMN: Conviction=0.50. Key catalysts: RSI in bullish sweet-spot (53.2); Price (65072.8) trading above 20-SMA baseline (64927.4). Projected target: 66,699.6 TMN with dynamic support at 64,610.3 TMN."
+      },
+      "bear_thesis": {
+        "bear_score": 0.35,
+        "risk_factor": "EMA9 (64878.5) below EMA21 (64933.4) downward pressure",
+        "resistance_level": 65463.23,
+        "invalidation_price": 64584.74,
+        "key_risks": [
+          "EMA9 (64878.5) below EMA21 (64933.4) downward pressure"
+        ],
+        "rationale": "Bear thesis for USDTTMN: Conviction=0.35. Key risk factors: EMA9 (64878.5) below EMA21 (64933.4) downward pressure. Overhead resistance at 65,463.2 TMN; downside invalidation at 64,584.7 TMN."
+      },
+      "arbiter_verdict": "APPROVE_BULLISH_TREND",
+      "recommended_regime": "BULLISH_TREND",
+      "confidence": 0.5,
+      "max_allocation_pct": 0.2,
+      "summary_reasoning": "Bull thesis prevails by delta +0.15 (Bull: 0.50 vs Bear: 0.35). Authorizing trend continuation up to 20% equity cap."
+    },
+    "episodic_memory_summary": "No closed trades in episodic memory. Strategy starting from baseline posture."
+  },
+  "hash_sha256": "88e7ce7db29e4bc5103b5d4951e6454bd9570114df42089d0ef97eec0d4ac077"
+}

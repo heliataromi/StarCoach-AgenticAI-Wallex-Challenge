@@ -1,0 +1,71 @@
+{
+  "record_id": "aud-20261023-1792784920142-0029",
+  "timestamp_iso": "2026-10-23T19:48:40.142978+00:00",
+  "timestamp_epoch": 1792784920.1429782,
+  "symbol": "ETHTMN",
+  "market_regime": "BULLISH_TREND",
+  "action_proposed": "SELL",
+  "execution_outcome": "SUCCESS",
+  "price": 184094038.62377843,
+  "quantity": 0.005548648738358793,
+  "cost_tmn": 1021473.1551492031,
+  "fee_tmn": 2553.682887873008,
+  "latency_ms": 0.11567000183276832,
+  "jev_metrics": {},
+  "risk_metrics": {
+    "portfolio_equity_tmn": 5033849.9091160875,
+    "allocation_pct": 0.20292086049275304
+  },
+  "market_indicators": {
+    "ema9": 182632909.92457426,
+    "ema21": 181735653.92885774,
+    "rsi": 96.53456465700468,
+    "atr": 874855.7173921679,
+    "lower_bb": 179158855.66418394,
+    "mid_bb": 181498957.83277166,
+    "upper_bb": 183839060.00135937,
+    "obi": 0.0,
+    "best_bid": 183955968.0948106,
+    "best_ask": 184232109.15274626
+  },
+  "agentic_reasoning": {
+    "macro_policy_summary": "Bullish trend regime: Upward momentum active on BTCTMN, ETHTMN, USDTTMN. Authorizing trend continuation and breakout trades.",
+    "macro_active_regime": "BULLISH_TREND",
+    "tactical_rationale": "Trend exit: RSI overbought or trailing stop reached",
+    "signal_confidence": 0.8,
+    "execution_message": "Order executed successfully in 0.12ms",
+    "debate_transcript": {
+      "symbol": "ETHTMN",
+      "timestamp": 1700094500.0,
+      "bull_thesis": {
+        "bull_score": 0.9,
+        "momentum_catalyst": "EMA9 (181036482.7) > EMA21 (180520548.2) golden alignment",
+        "support_level": 180552769.16,
+        "target_price": 186465076.46,
+        "key_factors": [
+          "EMA9 (181036482.7) > EMA21 (180520548.2) golden alignment",
+          "RSI in bullish sweet-spot (67.8)",
+          "Price (181917147.8) trading above 20-SMA baseline (180254914.0)"
+        ],
+        "rationale": "Bull thesis for ETHTMN: Conviction=0.90. Key catalysts: EMA9 (181036482.7) > EMA21 (180520548.2) golden alignment; RSI in bullish sweet-spot (67.8); Price (181917147.8) trading above 20-SMA baseline (180254914.0). Projected target: 186,465,076.5 TMN with dynamic support at 180,552,769.2 TMN."
+      },
+      "bear_thesis": {
+        "bear_score": 0.15,
+        "risk_factor": "Price (181917147.8) pressing against upper Bollinger Band (181810338.1)",
+        "resistance_level": 183008650.65,
+        "invalidation_price": 180552769.16,
+        "key_risks": [
+          "Price (181917147.8) pressing against upper Bollinger Band (181810338.1)"
+        ],
+        "rationale": "Bear thesis for ETHTMN: Conviction=0.15. Key risk factors: Price (181917147.8) pressing against upper Bollinger Band (181810338.1). Overhead resistance at 183,008,650.7 TMN; downside invalidation at 180,552,769.2 TMN."
+      },
+      "arbiter_verdict": "APPROVE_BULLISH_TREND",
+      "recommended_regime": "BULLISH_TREND",
+      "confidence": 0.9,
+      "max_allocation_pct": 0.2,
+      "summary_reasoning": "Bull thesis prevails by delta +0.75 (Bull: 0.90 vs Bear: 0.15). Authorizing trend continuation up to 20% equity cap."
+    },
+    "episodic_memory_summary": "Episodic memory: 1 completed trades | Win Rate: 100.0% | Net PnL: 19,429 TMN. Latest insight: Modest mean-reversion gain on BTCTMN (+1.94%) [Trend exit: RSI overbought or trailing stop reached]. Quick profit-taking avoided re-entry whipsaw."
+  },
+  "hash_sha256": "5f1ae8fa1e2a365f06edb7e80f470ae4f7106be2c723649705ef91284d292e9f"
+}

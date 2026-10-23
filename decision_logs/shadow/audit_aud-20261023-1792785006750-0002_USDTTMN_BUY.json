@@ -1,0 +1,72 @@
+{
+  "record_id": "aud-20261023-1792785006750-0002",
+  "timestamp_iso": "2026-10-23T19:50:06.750815+00:00",
+  "timestamp_epoch": 1792785006.750815,
+  "symbol": "USDTTMN",
+  "market_regime": "BULLISH_TREND",
+  "action_proposed": "BUY",
+  "execution_outcome": "SUCCESS",
+  "price": 268672.0,
+  "quantity": 3.71977120908369,
+  "cost_tmn": 999398.3702869331,
+  "fee_tmn": 2498.4959257173327,
+  "latency_ms": 0.1196509983856231,
+  "jev_metrics": {},
+  "risk_metrics": {
+    "portfolio_equity_tmn": 4994517.534021808,
+    "allocation_pct": 0.20009908133852783
+  },
+  "market_indicators": {
+    "ema9": 268654.563682055,
+    "ema21": 268611.911753013,
+    "rsi": 61.832061068702295,
+    "atr": 2149.376,
+    "lower_bb": 268577.4901790339,
+    "mid_bb": 268636.05,
+    "upper_bb": 268694.6098209661,
+    "obi": 0.19425888154432888,
+    "best_bid": 268667.0,
+    "best_ask": 268690.0
+  },
+  "agentic_reasoning": {
+    "macro_policy_summary": "Bullish trend regime: Upward momentum active on BTCTMN, ETHTMN, USDTTMN. Authorizing trend continuation and breakout trades.",
+    "macro_active_regime": "BULLISH_TREND",
+    "tactical_rationale": "Bullish trend breakout: EMA9 (268654.6) > EMA21 (268611.9), RSI=61.8, OBI=0.19",
+    "signal_confidence": 0.8,
+    "execution_message": "Order executed successfully in 0.12ms",
+    "debate_transcript": {
+      "symbol": "USDTTMN",
+      "timestamp": 1792784989.9286344,
+      "bull_thesis": {
+        "bull_score": 0.8,
+        "momentum_catalyst": "EMA9 (268654.6) > EMA21 (268611.9) golden alignment",
+        "support_level": 268577.49,
+        "target_price": 275388.8,
+        "key_factors": [
+          "EMA9 (268654.6) > EMA21 (268611.9) golden alignment",
+          "RSI in bullish sweet-spot (61.8)",
+          "Price (268672.0) trading above 20-SMA baseline (268636.0)"
+        ],
+        "rationale": "Bull thesis for USDTTMN: Conviction=0.80. Key catalysts: EMA9 (268654.6) > EMA21 (268611.9) golden alignment; RSI in bullish sweet-spot (61.8); Price (268672.0) trading above 20-SMA baseline (268636.0). Projected target: 275,388.8 TMN with dynamic support at 268,577.5 TMN."
+      },
+      "bear_thesis": {
+        "bear_score": 0.4,
+        "risk_factor": "Ask book depth dominance (OBI: -0.21) indicating institutional selling",
+        "resistance_level": 270284.03,
+        "invalidation_price": 266656.96,
+        "key_risks": [
+          "Ask book depth dominance (OBI: -0.21) indicating institutional selling",
+          "Price (268672.0) pressing against upper Bollinger Band (268694.6)"
+        ],
+        "rationale": "Bear thesis for USDTTMN: Conviction=0.40. Key risk factors: Ask book depth dominance (OBI: -0.21) indicating institutional selling; Price (268672.0) pressing against upper Bollinger Band (268694.6). Overhead resistance at 270,284.0 TMN; downside invalidation at 266,657.0 TMN."
+      },
+      "arbiter_verdict": "APPROVE_BULLISH_TREND",
+      "recommended_regime": "BULLISH_TREND",
+      "confidence": 0.8,
+      "max_allocation_pct": 0.2,
+      "summary_reasoning": "Bull thesis prevails by delta +0.40 (Bull: 0.80 vs Bear: 0.40). Authorizing trend continuation up to 20% equity cap."
+    },
+    "episodic_memory_summary": "No closed trades in episodic memory. Strategy starting from baseline posture."
+  },
+  "hash_sha256": "897dde11059bb82cd199a751e58b6020659fb3f4bbb40e00a554e90b0a367ccc"
+}
