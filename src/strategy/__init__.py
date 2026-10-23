@@ -16,6 +16,18 @@ from src.strategy.indicators import (
 from src.strategy.regimes import LatentRegimeClassifier
 from src.strategy.signals import MultiRegimeSignalGenerator
 from src.strategy.macro_agent import MacroAgent
+from src.strategy.debate import (
+    BullThesis,
+    BearThesis,
+    DebateTranscript,
+    BullResearcher,
+    BearResearcher,
+    RiskArbiter,
+)
+from src.strategy.reflection import (
+    TradePostMortem,
+    EpisodicMemoryBuffer,
+)
 
 __all__ = [
     "MarketRegime",
@@ -31,4 +43,12 @@ __all__ = [
     "LatentRegimeClassifier",
     "MultiRegimeSignalGenerator",
     "MacroAgent",
+    "BullThesis",
+    "BearThesis",
+    "DebateTranscript",
+    "BullResearcher",
+    "BearResearcher",
+    "RiskArbiter",
+    "TradePostMortem",
+    "EpisodicMemoryBuffer",
 ]
